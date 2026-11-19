@@ -173,6 +173,8 @@ nav button.active{color:var(--red)}
   <div style="margin-top:16px">
     <b style="font-size:.85rem">🏛️ Fiscal SAT (CFDI 4.0) y Reformas</b>
     <input id="fTasaIva" type="number" step="0.0001" placeholder="Tasa IVA (0.16 = 16%)">
+    <button class="btn btn-sm" onclick="setZona('centro')">🏙️ Zona Centro 16%</button>
+    <button class="btn btn-sm" onclick="setZona('frontera')">🌎 Frontera 8%</button>
     <button class="btn btn-blue" onclick="saveTasa()">Guardar Tasa IVA</button>
     <div id="fiscalAvisos" style="margin-top:8px"></div>
     <button class="btn btn-blue" style="margin-top:8px" onclick="validarFiscal()">🔎 Validar configuración fiscal</button>
@@ -402,6 +404,11 @@ async function savePagos(){
   if(r.ok)alert('Mercado Pago guardado ✔');else alert('⚠ Error');
   sync();
 }
+async function setZona(z){
+  const v=z==='centro'?0.16:0.08;
+  document.getElementById('fTasaIva').value=v;
+  await saveTasa();
+}
 async function saveTasa(){
   const tasa=parseFloat(document.getElementById('fTasaIva').value);
   if(!tasa||tasa<=0||tasa>1){alert('Tasa inválida (ej. 0.16)');return;}
@@ -456,6 +463,14 @@ async function conciliarBanco(){
     '<div class="stat"><span>⚠ Sin match (revisar)</span><b>'+res.sin_match+'</b></div>'+
     res.pendientes.slice(0,6).map(b=>'<div class="stat"><span>'+b.fecha+' · '+b.concepto+'</span><b>'+money(b.monto)+'</b></div>').join('');
   sync();
+}
+async function cargarFiscalEstado(){
+  try{
+    const r=await fetch('/api/fiscal/estado');
+    const res=await r.json();
+    const t=res.tasa_iva!=null?Math.round(res.tasa_iva*100)+'%':'16%';
+    document.getElementById('fiscalAvisos').innerHTML='<div class="stat"><span>🏦 Impuesto vigente: <b>'+t+'</b> (zona centro 16% / frontera 8%)</span><b>'+(res.ultima_revision?'📅 Revisado: '+res.ultima_revision:'⏳ Revisando sitios oficiales…')+'</b></div>';
+  }catch(e){}
 }
 async function validarFiscal(){
   try{
@@ -533,6 +548,7 @@ function setVal(id,v){const e=document.getElementById(id);if(!e)return;if(docume
 
 sync();
 validarFiscal();
+cargarFiscalEstado();
 setInterval(sync,6000);
 </script>
 </body>

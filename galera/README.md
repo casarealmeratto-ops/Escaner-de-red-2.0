@@ -29,11 +29,11 @@ Servidor 24/7 que corre igual en **Android (Termux), Windows, Linux y macOS** �
 | 💳 **Pasarela de pagos (Mercado Pago)** | Botón "Cobrar" en cada pedido web → genera link de checkout (`/api/pagos/preferencia`). El webhook `/api/pagos/webhook` marca el pedido como **PAGADO** y registra el ingreso en caja con referencia `MP-{id}` |
 | 🏦 **Conciliación bancaria automática** | Importa el estado de cuenta (CSV/TSV) en Config → Banco (`/api/banco/importar`); `/api/conciliar` cruza montos de banco contra ventas/caja (±$0.01, ventana de días y folio en el concepto) marcando ambos lados como conciliados |
 | 🧾 **Validador fiscal SAT** | `/api/fiscal/validar` revisa RFC, régimen/uso CFDI (catálogo 4.0), CP, serie y tasa de IVA antes de timbrar |
-| 📜 **Reformas SAT/DOF** | `/api/fiscal/reformas` consulta novedades de sat.gob.mx, dof.gob.mx y la página del Anexo 20; guarda resultados para revisar cambios fiscales vigentes |
+| 📜 **Reformas SAT/DOF (automático)** | Conector a los sitios oficiales: sat.gob.mx (Novedades, Anexo 20, Miscelánea Fiscal) y dof.gob.mx. Se ejecuta **solo al arrancar y cada 24 h** (`fiscal_worker`); estado visible en ERP → Config → Fiscal (`/api/fiscal/estado`) y manual en `/api/fiscal/reformas` |
 | 🛡️ **Resguardo ZIP** | Config → "Descargar respaldo" → ZIP con `db_galera.json` + fotos + archivo histórico + facturas (`/api/respaldo`) |
 | ⚡ **Sync robusto** | Ventas/pedidos/caja/mensajes son del servidor: los clientes solo editan inventario y config. Alta/ajuste/baja de piezas va por `/api/pieza` (operación granular) sin pisar datos entre dispositivos |
 | 📊 **Corte CSV fiel** | `/api/corte.csv` exporta el corte del día en el formato histórico `Folio,ID,Fecha,Cliente,Vehiculo,Metodo,Facturado,UUID,Total` (compatible Excel) |
-| 📈 **IVA configurable** | `tasa_iva` en Config → Facturación (por defecto 0.16); ante cambio fiscal se ajusta un solo campo y aplica a CFDI nuevos |
+| 📈 **IVA por zona** | Botones "🏙️ Zona Centro 16%" y "🌎 Frontera 8%" en Config → Fiscal. El validador avisa si la tasa usada no es 0.16 ó 0.08 (tasas vigentes 2026: Ley del IVA + estímulo fronterizo fichas 3/DEC-5 y 4/DEC-5 del Anexo 2 RMF, vigente hasta 31-dic-2026) |
 
 ---
 
@@ -124,6 +124,8 @@ galera/
 - Banco: importar CSV/TSV (fechas válidas, montos con $ y comas), conciliar por monto+fecha, descartar líneas raras ✅
 - Conciliación marca ambos lados (banco y caja/ventas) ✅
 - Validador fiscal detecta RFC/régimen/UsoCFDI/CP faltantes ✅
+- Conector automático SAT/DOF: DOF conecta y lista decretos reales; errores de red manejados sin crash ✅
+- Tasas IVA: 0.16 y 0.08 aceptadas, 0.15 → aviso con fundamento oficial ✅
 - Respaldo ZIP válido (PK) con db + productos + archivo histórico ✅
 - Corte CSV con formato histórico `Folio,ID,...,Total` ✅
 - Tasa IVA configurable aplicada a CFDI nuevos ✅

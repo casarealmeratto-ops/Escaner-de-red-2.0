@@ -811,22 +811,28 @@ def validar_fiscales():
     if tasa <= 0 or tasa > 1:
         avisos.append('⚠ tasa_iva fuera de rango (0 < tasa <= 1). Si hubo reforma fiscal, actualízala en Config')
         ok = False
+    elif abs(tasa - 0.16) > 0.0001 and abs(tasa - 0.08) > 0.0001:
+        avisos.append('⚠ tasa_iva inusual (' + str(tasa) + '). Vigentes 2026: 0.16 general (zona centro, ej. Puebla) y 0.08 en región fronteriza norte/sur (estímulo, fichas 3/DEC-5 y 4/DEC-5 del Anexo 2 de la RMF, vigentes hasta 31-dic-2026). Verifica en SAT/DOF')
     if not (cfg.get('url_prod') or '').startswith('https://'):
         avisos.append('⚠ URL del PAC debe ser HTTPS')
         ok = False
     return {'ok': ok, 'avisos': avisos or ['✔ Configuración fiscal coherente con CFDI 4.0 y catálogos vigentes (validación local)']}
 
+FUENTES_FISCALES = [
+    ('SAT - Novedades', 'https://www.sat.gob.mx/novedades'),
+    ('SAT - Anexo 20 (CFDI)', 'https://www.sat.gob.mx/consultas/860/comprobante-fiscal-digital-a-traves-de-internet-cfdi'),
+    ('SAT - Miscelánea Fiscal 2026', 'https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE'),
+    ('DOF - Edición del día', 'https://dof.gob.mx/'),
+    ('DOF - Búsqueda: estímulo IVA frontera', 'https://dof.gob.mx/busqueda_detalle.php?texto=estimulo+fiscal+IVA+region+fronteriza')
+]
+
 def buscar_reformas():
-    fuentes = [
-        ('SAT - Novedades', 'https://www.sat.gob.mx/novedades'),
-        ('SAT - Anexo 20 (CFDI)', 'https://www.sat.gob.mx/consultas/860/comprobante-fiscal-digital-a-traves-de-internet-cfdi'),
-        ('DOF - Edición del día', 'https://www.dof.gob.mx/')
-    ]
+    fuentes = FUENTES_FISCALES
     palabras = ['reforma', 'fiscal', 'cfdi', 'anexo 20', 'comercio exterior', 'iva', 'timbrado', 'carta porte']
     hallados = []
     for nombre, url in fuentes:
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (compatible; LaGaleraERP/6.0)'})
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36'})
             with urllib.request.urlopen(req, timeout=25) as resp:
                 html = resp.read().decode('utf-8', errors='replace')
             conectado = True
@@ -839,9 +845,7 @@ def buscar_reformas():
             tl = titulo.lower()
             if any(p in tl for p in palabras):
                 if href.startswith('/'):
-                    href = '/' if nombre.startswith('DOF') else url.rstrip('/') + href
-                    if nombre.startswith('DOF'):
-                        href = 'https://www.dof.gob.mx' + href
+                    href = ('https://dof.gob.mx' if nombre.startswith('DOF') else url.rstrip('/')) + href
                 hallados.append({'fuente': nombre, 'titulo': titulo[:180], 'url': href})
                 cnt += 1
                 if cnt >= 15:
@@ -882,6 +886,15 @@ def crear_respaldo_zip():
                     z.write(pa, f'facturas/{a}')
         z.writestr('INFO.txt', f'Respaldo La Galera v6.0\nGenerado: {datetime.datetime.now().isoformat()}\nIncluye: base, fotos, archivo historico y facturas.\n')
     return bufferx.getvalue()
+def fiscal_worker():
+    time.sleep(3)
+    while True:
+        try:
+            buscar_reformas()
+        except Exception:
+            pass
+        time.sleep(86400)
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, **MIME_EXTRA}
     def __init__(self, *a, **k): super().__init__(*a, directory=CARPETA, **k)
@@ -927,6 +940,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     }
                 }
             self.send_json(200, pub)
+            return
+        if path == '/api/fiscal/estado':
+            with LOCK:
+                estado = {
+                    'ultima_revision': MEM_DB.get('fiscal_check', {}).get('ts', ''),
+                    'fuentes': len(MEM_DB.get('fiscal_check', {}).get('resultados', [])),
+                    'resultados': MEM_DB.get('fiscal_check', {}).get('resultados', [])[:30],
+                    'tasa_iva': MEM_DB.get('config', {}).get('facturalo', {}).get('tasa_iva', 0.16),
+                    'sitios': [{'nombre': n, 'url': u} for n, u in FUENTES_FISCALES]
+                }
+            self.send_json(200, estado)
             return
         if path == '/api/corte.csv':
             qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -1609,6 +1633,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 def main():
     persist_to_disk(create_backup=True)
     threading.Thread(target=autosave_worker, daemon=True).start()
+    threading.Thread(target=fiscal_worker, daemon=True).start()
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     httpd = socketserver.ThreadingTCPServer(('0.0.0.0', PUERTO), Handler)
     ip = get_local_ip()
