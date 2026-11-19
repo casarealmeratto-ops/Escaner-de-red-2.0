@@ -1,6 +1,6 @@
-# 🔧 Sistema Integral La Galera Autopartes v6.0
+# 🔧 Sistema Integral La Galera Autopartes v6.1
 
-**E-commerce + ERP táctil + IA + Facturación CFDI 4.0 (SAT México)**
+**E-commerce + ERP táctil + IA + Facturación CFDI 4.0 (SAT México) + Pagos + Conciliación bancaria**
 
 Servidor 24/7 que corre igual en **Android (Termux), Windows, Linux y macOS** — solo necesita Python 3 (sin dependencias externas). Memoria local que crece automáticamente con la base de datos.
 
@@ -19,6 +19,21 @@ Servidor 24/7 que corre igual en **Android (Termux), Windows, Linux y macOS** �
 | 🛍️ **Conectores** | **Meta Commerce** (push del catálogo vía Graph API), **WhatsApp Cloud API** (envío de confirmaciones + webhook receptor), **Mercado Libre** (publicación de piezas), **feed CSV** compatible con Meta / Instagram / TikTok / Google |
 | 🔑 **API Partner** | API propia con llave para enlazar sistemas externos (leer catálogo, actualizar precios y stock) |
 | 💾 **Memoria expansible** | La base caliente (`db_galera.json`) se mantiene ligera (500 registros por colección) y el historial crece sin límite en `archivo/` por mes |
+
+---
+
+## 🆕 Novedades v6.1
+
+| Módulo | Descripción |
+|---|---|
+| 💳 **Pasarela de pagos (Mercado Pago)** | Botón "Cobrar" en cada pedido web → genera link de checkout (`/api/pagos/preferencia`). El webhook `/api/pagos/webhook` marca el pedido como **PAGADO** y registra el ingreso en caja con referencia `MP-{id}` |
+| 🏦 **Conciliación bancaria automática** | Importa el estado de cuenta (CSV/TSV) en Config → Banco (`/api/banco/importar`); `/api/conciliar` cruza montos de banco contra ventas/caja (±$0.01, ventana de días y folio en el concepto) marcando ambos lados como conciliados |
+| 🧾 **Validador fiscal SAT** | `/api/fiscal/validar` revisa RFC, régimen/uso CFDI (catálogo 4.0), CP, serie y tasa de IVA antes de timbrar |
+| 📜 **Reformas SAT/DOF** | `/api/fiscal/reformas` consulta novedades de sat.gob.mx, dof.gob.mx y la página del Anexo 20; guarda resultados para revisar cambios fiscales vigentes |
+| 🛡️ **Resguardo ZIP** | Config → "Descargar respaldo" → ZIP con `db_galera.json` + fotos + archivo histórico + facturas (`/api/respaldo`) |
+| ⚡ **Sync robusto** | Ventas/pedidos/caja/mensajes son del servidor: los clientes solo editan inventario y config. Alta/ajuste/baja de piezas va por `/api/pieza` (operación granular) sin pisar datos entre dispositivos |
+| 📊 **Corte CSV fiel** | `/api/corte.csv` exporta el corte del día en el formato histórico `Folio,ID,Fecha,Cliente,Vehiculo,Metodo,Facturado,UUID,Total` (compatible Excel) |
+| 📈 **IVA configurable** | `tasa_iva` en Config → Facturación (por defecto 0.16); ante cambio fiscal se ajusta un solo campo y aplica a CFDI nuevos |
 
 ---
 
@@ -104,9 +119,19 @@ galera/
 
 ## 🧪 Verificado en este desarrollo
 
+- `/api/pieza`: alta, ajuste de stock, edición y baja granular ✅
+- Mercado Pago: preferencia sin token → error claro; webhook sin token → respuesta sin crash ✅
+- Banco: importar CSV/TSV (fechas válidas, montos con $ y comas), conciliar por monto+fecha, descartar líneas raras ✅
+- Conciliación marca ambos lados (banco y caja/ventas) ✅
+- Validador fiscal detecta RFC/régimen/UsoCFDI/CP faltantes ✅
+- Respaldo ZIP válido (PK) con db + productos + archivo histórico ✅
+- Corte CSV con formato histórico `Folio,ID,...,Total` ✅
+- Tasa IVA configurable aplicada a CFDI nuevos ✅
+- Sync multi-dispositivo: config de un cliente no borra ventas/pedidos/caja ✅
 - Venta mostrador → folio, stock descontado, registro en caja ✅
 - Pedido web (carrito) → confirmación → venta + caja ✅
 - Corte de caja: efectivo esperado, por método, egresos ✅
+- Archivado automático 600+ → 500 calientes (tras tick autosave) + archivo mensual ✅
 - CFDI 4.0 individual (claves autopartes, sin InformacionGlobal) y global (01010101 + InformacionGlobal) ✅
 - Feed CSV, API Partner con llave (401 sin llave) ✅
 - WhatsApp webhook verificación challenge + recepción de mensajes ✅

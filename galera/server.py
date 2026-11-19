@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import http.server, socketserver, os, sys, json, threading, datetime, time, shutil, socket, urllib.request, urllib.error, urllib.parse, base64
+import http.server, socketserver, os, sys, json, threading, datetime, time, shutil, socket, re, zipfile, io, urllib.request, urllib.error, urllib.parse, base64
 
 PUERTO = 8000
 CARPETA = os.path.dirname(os.path.abspath(__file__))
@@ -60,7 +60,9 @@ def default_db():
         "pedidos": [],
         "caja": [],
         "mensajes": [],
-        "config": {"integraciones": {}}
+        "banco": [],
+        "fiscal_check": {},
+        "config": {"integraciones": {}, "pagos": {}}
     }
 
 def load_initial_db():
@@ -74,7 +76,11 @@ def load_initial_db():
                     data.setdefault('pedidos', [])
                     data.setdefault('caja', [])
                     data.setdefault('mensajes', [])
+                    data.setdefault('banco', [])
+                    data.setdefault('fiscal_check', {})
                     data.setdefault('config', {}).setdefault('integraciones', {})
+                    data.setdefault('config', {}).setdefault('pagos', {})
+                    data.setdefault('config', {}).setdefault('facturalo', {}).setdefault('tasa_iva', 0.16)
                     return data
             except Exception:
                 pass
@@ -232,12 +238,15 @@ def construir_cfdi40(venta, receptor, fcfg):
     subtotal_sum = 0.0
     iva_sum = 0.0
 
+    tasa_iva = float(fcfg.get('tasa_iva', 0.16))
+    divisor = 1 + tasa_iva
+
     for it in venta.get('items', []):
         cant = float(it.get('cant', 1))
         precio_con_iva = float(it.get('precio', 0))
-        valor_unit = round(precio_con_iva / 1.16, 6)
+        valor_unit = round(precio_con_iva / divisor, 6)
         importe = round(valor_unit * cant, 2)
-        iva_item = round(importe * 0.16, 2)
+        iva_item = round(importe * tasa_iva, 2)
         subtotal_sum += importe
         iva_sum += iva_item
 
@@ -263,7 +272,7 @@ def construir_cfdi40(venta, receptor, fcfg):
                         "Base": f"{importe:.2f}",
                         "Impuesto": "002",
                         "TipoFactor": "Tasa",
-                        "TasaOCuota": "0.160000",
+                        "TasaOCuota": f"{tasa_iva:.6f}",
                         "Importe": f"{iva_item:.2f}"
                     }
                 ]
@@ -310,7 +319,7 @@ def construir_cfdi40(venta, receptor, fcfg):
                     "Base": f"{subtotal_sum:.2f}",
                     "Impuesto": "002",
                     "TipoFactor": "Tasa",
-                    "TasaOCuota": "0.160000",
+                    "TasaOCuota": f"{tasa_iva:.6f}",
                     "Importe": f"{iva_sum:.2f}"
                 }
             ]
@@ -326,7 +335,8 @@ def construir_cfdi_global(ventas_dia, fcfg):
     for v in ventas_dia:
         total_sum += float(v.get('total', 0))
 
-    subtotal_global = round(total_sum / 1.16, 2)
+    tasa_iva = float(fcfg.get('tasa_iva', 0.16))
+    subtotal_global = round(total_sum / (1 + tasa_iva), 2)
     iva_global = round(total_sum - subtotal_global, 2)
     valor_unit = subtotal_global
 
@@ -346,7 +356,7 @@ def construir_cfdi_global(ventas_dia, fcfg):
                     "Base": f"{subtotal_global:.2f}",
                     "Impuesto": "002",
                     "TipoFactor": "Tasa",
-                    "TasaOCuota": "0.160000",
+                    "TasaOCuota": f"{tasa_iva:.6f}",
                     "Importe": f"{iva_global:.2f}"
                 }
             ]
@@ -395,7 +405,7 @@ def construir_cfdi_global(ventas_dia, fcfg):
                     "Base": f"{subtotal_global:.2f}",
                     "Impuesto": "002",
                     "TipoFactor": "Tasa",
-                    "TasaOCuota": "0.160000",
+                    "TasaOCuota": f"{tasa_iva:.6f}",
                     "Importe": f"{iva_global:.2f}"
                 }
             ]
@@ -657,6 +667,221 @@ def ia_descripcion(pid):
             descripcion_llm = f"{item.get('desc')} linea {item.get('cat')}. Pieza con ajuste exacto, en venta en La Galera Autopartes Puebla con ${item.get('precio')} IVA incluido."
     return {'ok': True, 'id': pid, 'descripcion': descripcion_llm, 'motor': 'ia-nube' if get_ia_cfg()['key'] else 'agentes-locales'}
 
+
+# ------------------------------------------------------------
+# PASARELA DE PAGOS (Mercado Pago) + BANCO + CONCILIACIÓN
+# ------------------------------------------------------------
+def get_pagos_cfg():
+    with LOCK:
+        return dict(MEM_DB.get('config', {}).get('pagos', {}) or {})
+
+def mp_preferencia(pedido, pcfg, base_url):
+    token = (pcfg.get('mp_token') or '').strip()
+    if not token:
+        return {'ok': False, 'error': 'Configura tu Access Token de Mercado Pago en Config > Pagos.'}
+    items = [{
+        'title': f"{it.get('desc', 'Autoparte')} x{it.get('cant', 1)}"[:250],
+        'quantity': max(1, int(it.get('cant', 1))),
+        'unit_price': round(float(it.get('precio', 0)), 2),
+        'currency_id': 'MXN'
+    } for it in pedido.get('items', [])]
+    if not items:
+        return {'ok': False, 'error': 'Pedido sin artículos'}
+    body = {
+        'items': items,
+        'external_reference': str(pedido.get('id', '')),
+        'back_urls': {
+            'success': f'{base_url}/index.html?pagado=1',
+            'pending': f'{base_url}/index.html?pagado=0',
+            'failure': f'{base_url}/index.html?pagado=0'
+        },
+        'auto_return': 'approved',
+        'statement_descriptor': 'LA GALERA'
+    }
+    return http_json('https://api.mercadopago.com/checkout/preferences', data=body,
+                     headers={'Authorization': f'Bearer {token}'}, timeout=25)
+
+def mp_pago_detalle(payment_id, pcfg):
+    token = (pcfg.get('mp_token') or '').strip()
+    if not token:
+        return {'ok': False, 'error': 'Token de Mercado Pago no configurado'}
+    return http_json(f'https://api.mercadopago.com/v1/payments/{payment_id}',
+                     headers={'Authorization': f'Bearer {token}'}, timeout=25)
+
+def registrar_pago_aprobado(pago, ref):
+    monto = float(pago.get('transaction_amount') or 0)
+    metodo = 'Transferencia' if str(pago.get('payment_type_id', '')) == 'bank_transfer' else 'Tarjeta'
+    with LOCK:
+        ped = next((p for p in MEM_DB.get('pedidos', []) if str(p.get('id', '')) == str(ref)), None)
+        if ped and ped.get('estado') in ('nuevo', 'pagado'):
+            ped['estado'] = 'pagado'
+            ped['pago'] = {'id': str(pago.get('id', '')), 'monto': monto, 'metodo': metodo,
+                           'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        ya = next((m for m in MEM_DB.get('caja', []) if m.get('ref') == f"MP-{pago.get('id', '')}"), None)
+        if not ya:
+            registrar_caja('ingreso', f'Cobro Mercado Pago ref {ref}', monto, metodo, ref=f"MP-{pago.get('id', '')}")
+        return commit_db(increment_version=True, backup_now=True)
+
+def conciliar_banco(dias=7):
+    with LOCK:
+        banco = json.loads(json.dumps(MEM_DB.get('banco', [])))
+        movs = json.loads(json.dumps(MEM_DB.get('caja', []))) + json.loads(json.dumps(MEM_DB.get('ventas', [])))
+    parejas, sin_match = [], []
+    usados = set()
+    pivotes = []
+    for m in movs:
+        pivotes.append({'m': m, 'clave': f"{m.get('tipo', 'v')}-{m.get('ref') or m.get('id') or m.get('folio')}",
+                        'fecha': str(m.get('dia', ''))[:10], 'monto': float(m.get('monto', m.get('total', 0)) or 0)})
+    for b in banco:
+        if b.get('conciliado'):
+            parejas.append(b)
+            continue
+        mejor = None
+        for p in pivotes:
+            if p['clave'] in usados or abs(p['monto'] - float(b.get('monto', 0) or 0)) > 0.005:
+                continue
+            try:
+                delta = abs((datetime.date.fromisoformat(str(b.get('fecha', ''))[:10]) - datetime.date.fromisoformat(p['fecha'])).days) if p['fecha'] and b.get('fecha') else 99
+            except (ValueError, TypeError):
+                delta = 99
+            if delta > dias:
+                continue
+            folio_en_concepto = re.search(r'(\d{1,6})', f"{b.get('concepto', '')} {b.get('referencia', '')}")
+            folio = str(p['m'].get('folio', ''))
+            si_folio = folio and folio_en_concepto and folio_en_concepto.group(1) == folio
+            puntaje = delta - (10 if si_folio else 0)
+            if mejor is None or puntaje < mejor[0]:
+                mejor = (puntaje, p)
+        if mejor:
+            usados.add(mejor[1]['clave'])
+            parejas.append({**b, 'conciliado': True, 'contra': mejor[1]['clave'], 'movimiento': mejor[1]['m']})
+        else:
+            sin_match.append(b)
+    with LOCK:
+        cambios = 0
+        for b in parejas:
+            if not b.get('conciliado'):
+                continue
+            for reg in MEM_DB.get('banco', []):
+                if reg.get('id') == b.get('id'):
+                    reg['conciliado'] = True
+                    reg['contra'] = b.get('contra'); break
+            contra = b.get('contra') or ''
+            for reg in MEM_DB.get('ventas', []) + MEM_DB.get('caja', []):
+                rk = f"{reg.get('tipo', 'v')}-{reg.get('ref') or reg.get('id') or reg.get('folio')}"
+                if contra == rk:
+                    if not reg.get('conciliado'):
+                        reg['conciliado'] = True
+                        cambios += 1
+                    break
+        if cambios:
+            commit_db(increment_version=True, backup_now=False)
+    return {'ok': True, 'conciliados': len([b for b in parejas if b.get('conciliado')]),
+            'sin_match': len(sin_match), 'pendientes': sin_match[:80]}
+
+def validar_fiscales():
+    cfg = MEM_DB.get('config', {}).get('facturalo', {})
+    avisos, ok = [], True
+    rfc = (cfg.get('emisor_rfc', '') or '').strip().upper()
+    if not re.match(r'^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$', rfc):
+        avisos.append(f'❌ RFC emisor inválido: "{rfc}" (formato AAAA000000XXX)')
+        ok = False
+    regimenes = {'601','603','605','606','607','608','609','610','611','612','614','615','616','620','621','622','623','624','625','626'}
+    regimen = str(cfg.get('emisor_regimen', ''))
+    if regimen not in regimenes:
+        avisos.append(f'⚠ Régimen Fiscal "{regimen}" no está en el catálogo CFDI 4.0 vigente')
+        ok = False
+    if rfc.startswith(('XAXX', 'XEXX')) and regimen != '616':
+        avisos.append('⚠ RFC genérico (XAXX010101000/XEXX010101000) requiere Régimen 616')
+    receptor = cfg.get('receptor_default', {}) or {}
+    uso = str(receptor.get('uso_cfdi', ''))
+    usos = {'S01','G01','G02','G03','I01','I02','I03','I04','I05','I06','I07','I08','D01','D02','D03','D04','D05','D06','D07','D08','D09','D10','P01'}
+    if uso not in usos:
+        avisos.append(f'⚠ UsoCFDI "{uso}" fuera del catálogo 4.0 (S01 = sin efectos fiscales / público general)')
+        ok = False
+    cp = str(cfg.get('emisor_cp', ''))
+    if not (re.match(r'^\d{5}$', cp) and cp != '00000'):
+        avisos.append(f'⚠ Código Postal "{cp}" inválido (5 dígitos)')
+        ok = False
+    serie = str(cfg.get('serie', ''))
+    if not re.match(r'^[A-Za-z0-9_-]{1,25}$', serie):
+        avisos.append('⚠ Serie inválida (máx 25, alfanumérica)')
+        ok = False
+    tasa = float(cfg.get('tasa_iva', 0.16))
+    if tasa <= 0 or tasa > 1:
+        avisos.append('⚠ tasa_iva fuera de rango (0 < tasa <= 1). Si hubo reforma fiscal, actualízala en Config')
+        ok = False
+    if not (cfg.get('url_prod') or '').startswith('https://'):
+        avisos.append('⚠ URL del PAC debe ser HTTPS')
+        ok = False
+    return {'ok': ok, 'avisos': avisos or ['✔ Configuración fiscal coherente con CFDI 4.0 y catálogos vigentes (validación local)']}
+
+def buscar_reformas():
+    fuentes = [
+        ('SAT - Novedades', 'https://www.sat.gob.mx/novedades'),
+        ('SAT - Anexo 20 (CFDI)', 'https://www.sat.gob.mx/consultas/860/comprobante-fiscal-digital-a-traves-de-internet-cfdi'),
+        ('DOF - Edición del día', 'https://www.dof.gob.mx/')
+    ]
+    palabras = ['reforma', 'fiscal', 'cfdi', 'anexo 20', 'comercio exterior', 'iva', 'timbrado', 'carta porte']
+    hallados = []
+    for nombre, url in fuentes:
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (compatible; LaGaleraERP/6.0)'})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                html = resp.read().decode('utf-8', errors='replace')
+            conectado = True
+        except Exception as e:
+            hallados.append({'fuente': nombre, 'error': f'No se pudo conectar: {str(e)[:90]}'})
+            continue
+        cnt = 0
+        for m in re.finditer(r'<a[^>]*href="([^"]+)"[^>]*>([^<]{20,220})</a>', html):
+            href, titulo = m.group(1).strip(), ' '.join(m.group(2).split())
+            tl = titulo.lower()
+            if any(p in tl for p in palabras):
+                if href.startswith('/'):
+                    href = '/' if nombre.startswith('DOF') else url.rstrip('/') + href
+                    if nombre.startswith('DOF'):
+                        href = 'https://www.dof.gob.mx' + href
+                hallados.append({'fuente': nombre, 'titulo': titulo[:180], 'url': href})
+                cnt += 1
+                if cnt >= 15:
+                    break
+        if not cnt:
+            hallados.append({'fuente': nombre, 'titulo': 'Conectado sin novedades fiscales visibles en portada', 'url': url})
+    unicos, ya = [], set()
+    for h in hallados:
+        k = h.get('url') or (h.get('fuente', '') + h.get('titulo', ''))
+        if k in ya:
+            continue
+        ya.add(k)
+        unicos.append(h)
+    with LOCK:
+        MEM_DB['fiscal_check'] = {'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'resultados': unicos[:60]}
+        commit_db(increment_version=False, backup_now=False)
+    return unicos[:60]
+
+def crear_respaldo_zip():
+    bufferx = io.BytesIO()
+    with zipfile.ZipFile(bufferx, 'w', zipfile.ZIP_DEFLATED) as z:
+        if os.path.exists(DB_FILE):
+            z.write(DB_FILE, 'db_galera.json')
+        if os.path.isdir(PRODUCTOS_DIR):
+            for a in os.listdir(PRODUCTOS_DIR):
+                pa = os.path.join(PRODUCTOS_DIR, a)
+                if os.path.isfile(pa):
+                    z.write(pa, f'productos/{a}')
+        if os.path.isdir(ARCHIVOS_DIR):
+            for a in os.listdir(ARCHIVOS_DIR):
+                pa = os.path.join(ARCHIVOS_DIR, a)
+                if os.path.isfile(pa):
+                    z.write(pa, f'archivo/{a}')
+        if os.path.isdir(FACTURAS_DIR):
+            for a in os.listdir(FACTURAS_DIR):
+                pa = os.path.join(FACTURAS_DIR, a)
+                if os.path.isfile(pa):
+                    z.write(pa, f'facturas/{a}')
+        z.writestr('INFO.txt', f'Respaldo La Galera v6.0\nGenerado: {datetime.datetime.now().isoformat()}\nIncluye: base, fotos, archivo historico y facturas.\n')
+    return bufferx.getvalue()
 class Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, **MIME_EXTRA}
     def __init__(self, *a, **k): super().__init__(*a, directory=CARPETA, **k)
@@ -703,8 +928,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 }
             self.send_json(200, pub)
             return
+        if path == '/api/corte.csv':
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            dia = qs.get('dia', [''])[0] or datetime.datetime.now().strftime('%Y-%m-%d')
+            self.handle_corte_csv(dia)
+            return
         if path == '/api/feed.csv':
             self.handle_feed()
+            return
+        if path == '/api/respaldo':
+            try:
+                data = crear_respaldo_zip()
+            except Exception as e:
+                self.send_json(500, {"ok": False, "error": str(e)})
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/zip')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Content-Disposition', f'attachment; filename="galera_respaldo_{datetime.date.today().isoformat()}.zip"')
+            self.end_headers()
+            self.wfile.write(data)
             return
         if path == '/api/whatsapp/webhook':
             qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -745,8 +988,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == '/api/sync':
             with LOCK:
                 if 'inventario' in payload: MEM_DB['inventario'] = payload['inventario']
-                if 'ventas' in payload: MEM_DB['ventas'] = payload['ventas']
-                if 'config' in payload: MEM_DB['config'] = payload['config']
+                if 'config' in payload: MEM_DB.setdefault('config', {}).update(payload.get('config', {}) or {})
                 saved = commit_db(increment_version=True, backup_now=False)
             self.send_json(200, {"ok": True, "state": saved})
             return
@@ -761,8 +1003,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
                 inv_map = {int(p['id']): p for p in MEM_DB.get('inventario', [])}
                 for it in items:
-                    pid = int(it['id'])
-                    cant = int(it['cant'])
+                    try: pid = int(it.get('id') or 0)
+                    except (TypeError, ValueError): pid = 0
+                    try: cant = max(1, int(it.get('cant', it.get('qty', 1)) or 1))
+                    except (TypeError, ValueError): cant = 1
                     if pid in inv_map:
                         inv_map[pid]['stock'] = max(0, int(inv_map[pid]['stock']) - cant)
                         total += float(inv_map[pid]['precio']) * cant
@@ -980,8 +1224,133 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             datos = leer_archivo(coleccion, payload.get('mes'))
             self.send_json(200, {"ok": True, "coleccion": coleccion, "registros": len(datos), "datos": datos[:300]})
             return
+        if path == '/api/pagos/preferencia':
+            pcfg = get_pagos_cfg()
+            try: ref = str(payload.get('pedido_id', ''))
+            except (TypeError, ValueError): ref = ''
+            with LOCK:
+                ped = next((p for p in MEM_DB.get('pedidos', []) if str(p.get('id', '')) == ref), None)
+            if not ped:
+                self.send_json(404, {"ok": False, "error": "Pedido no encontrado"})
+                return
+            base = f"http://{self.headers.get('Host') or (get_local_ip() + ':' + str(PUERTO))}"
+            res = mp_preferencia(ped, pcfg, base.rstrip('/'))
+            if res.get('ok'):
+                init_point = res['data'].get('init_point', '') or res['data'].get('sandbox_init_point', '')
+                with LOCK:
+                    for p in MEM_DB['pedidos']:
+                        if str(p.get('id', '')) == ref: p['pago_link'] = init_point; break
+                    commit_db(increment_version=False, backup_now=False)
+                self.send_json(200, {"ok": True, "init_point": init_point})
+            else:
+                self.send_json(400, {"ok": False, "error": res.get('error', 'Error Mercado Pago')})
+            return
+        if path == '/api/pagos/webhook':
+            payment_id = ''
+            try:
+                payment_id = str(payload.get('data', {}).get('id', ''))
+            except (AttributeError, TypeError):
+                payment_id = ''
+            if not payment_id:
+                self.send_json(200, {"ok": True})
+                return
+            res = mp_pago_detalle(payment_id, get_pagos_cfg())
+            if res.get('ok'):
+                pago = res['data']
+                if str(pago.get('status', '')) == 'approved':
+                    ref = str(pago.get('external_reference', ''))
+                    if ref:
+                        registrar_pago_aprobado(pago, ref)
+            self.send_json(200, {"ok": True})
+            return
+        if path == '/api/banco/importar':
+            lineas = payload.get('lineas', [])
+            if isinstance(lineas, str):
+                lineas = [l for l in lineas.replace(';\r', ';\n').split('\n') if l.strip()]
+            agregados = 0
+            with LOCK:
+                for l in lineas[:2000]:
+                    partes = [x.strip().strip('"') for x in re.split(r'[,;	]', str(l))]
+                    if len(partes) < 3:
+                        continue
+                    try:
+                        monto = round(float(partes[-1].replace('$', '').replace(',', '')), 2)
+                    except (ValueError, TypeError):
+                        continue
+                    if not re.match(r'^\d{4}-\d{2}-\d{2}', partes[0]):
+                        continue
+                    MEM_DB.setdefault('banco', []).insert(0, {
+                        'id': f"BK{int(datetime.datetime.now().timestamp()*1000)}{agregados}",
+                        'fecha': partes[0][:10],
+                        'concepto': (partes[1] if len(partes) > 2 else 'Movimiento')[:120],
+                        'monto': monto,
+                        'conciliado': False
+                    })
+                    agregados += 1
+                saved = commit_db(increment_version=True, backup_now=False)
+            self.send_json(200, {"ok": True, "agregados": agregados, "state": saved})
+            return
+        if path == '/api/conciliar':
+            dias = int(payload.get('dias', 7))
+            self.send_json(200, conciliar_banco(dias))
+            return
+        if path == '/api/fiscal/validar':
+            with LOCK:
+                self.send_json(200, validar_fiscales())
+            return
+        if path == '/api/fiscal/reformas':
+            resultados = buscar_reformas()
+            self.send_json(200, {"ok": True, "total": len(resultados), "resultados": resultados,
+                                 "ts": MEM_DB.get('fiscal_check', {}).get('ts', '')})
+            return
         if path == '/api/upload-img':
             self.handle_upload_img(payload)
+            return
+        if path == '/api/pieza':
+            op = payload.get('op', '')
+            with LOCK:
+                MEM_DB.setdefault('inventario', [])
+                if op == 'add':
+                    p = payload.get('pieza', {})
+                    if not isinstance(p, dict) or not (p.get('desc', '') or '').strip():
+                        self.send_json(400, {"ok": False, "error": "Falta descripci\u00f3n de la pieza"})
+                        return
+                    novo = {
+                        'id': int(p.get('id') or datetime.datetime.now().timestamp() * 1000),
+                        'cat': (p.get('cat', '') or 'Colisi\u00f3n').strip()[:40],
+                        'desc': (p.get('desc', '') or '').strip()[:80],
+                        'prov': (p.get('prov', '') or '').strip()[:40],
+                        'precio': round(float(p.get('precio', 0) or 0), 2),
+                        'stock': max(0, int(p.get('stock', 0) or 0)),
+                        'img': (p.get('img', '') or '').strip()[:120]
+                    }
+                    MEM_DB['inventario'].insert(0, novo)
+                    saved = commit_db(increment_version=True, backup_now=False)
+                    self.send_json(200, {"ok": True, "pieza": novo, "state": saved})
+                    return
+                if op in ('update', 'del'):
+                    try: pid = int(payload.get('id') or 0)
+                    except (TypeError, ValueError): pid = 0
+                    pieza = next((p for p in MEM_DB['inventario'] if int(p.get('id', 0)) == pid), None)
+                    if not pieza:
+                        self.send_json(404, {"ok": False, "error": "Pieza no encontrada"})
+                        return
+                    if op == 'del':
+                        MEM_DB['inventario'].remove(pieza)
+                    else:
+                        if 'stock' in payload:
+                            pieza['stock'] = max(0, int(payload.get('stock') or 0))
+                        patch = payload.get('patch', {})
+                        if isinstance(patch, dict):
+                            for k in ('cat', 'desc', 'prov'):
+                                if k in patch: pieza[k] = str(patch.get(k, '')).strip()[:80 if k == 'desc' else 40]
+                            for k in ('precio',):
+                                if k in patch: pieza[k] = round(float(patch.get(k, 0) or 0), 2)
+                            if 'img' in patch: pieza['img'] = str(patch.get('img', '')).strip()[:120]
+                    saved = commit_db(increment_version=True, backup_now=False)
+                    self.send_json(200, {"ok": True, "state": saved})
+                    return
+            self.send_json(400, {"ok": False, "error": "Operaci\u00f3n inv\u00e1lida"})
             return
         if path == '/api/pedido':
             self.handle_pedido(payload)
@@ -1067,7 +1436,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             inv_map = {int(p['id']): p for p in MEM_DB.get('inventario', [])}
             items, total, stock_ok = [], 0.0, []
             for it in items_raw:
-                pid = int(it.get('id', 0))
+                pid = int(it.get('id') or 0)
                 cant = max(1, int(it.get('cant', 1)))
                 p = inv_map.get(pid)
                 if not p:
@@ -1106,7 +1475,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not ped:
                 self.send_json(404, {"ok": False, "error": "Pedido no encontrado"})
                 return
-            if ped.get('estado') != 'nuevo':
+            if ped.get('estado') not in ('nuevo', 'pagado'):
                 self.send_json(400, {"ok": False, "error": f"Pedido ya procesado ({ped.get('estado')})"})
                 return
             if accion == 'cancelar':
@@ -1185,7 +1554,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         for k in ('ventas_total', 'ingresos', 'egresos'):
             resumen[k] = round(resumen[k], 2)
         resumen['por_metodo'] = {k: round(v, 2) for k, v in resumen['por_metodo'].items()}
+        resumen['ventas_detalle'] = [{
+            'Folio': v.get('folio', ''), 'ID': v.get('id', ''), 'Fecha': v.get('fecha', ''),
+            'Cliente': v.get('cliente', ''), 'Vehiculo': v.get('auto', ''), 'Metodo': v.get('metodo', ''),
+            'Facturado': 'SI' if v.get('facturado') else 'NO', 'UUID': v.get('uuid', ''), 'Total': float(v.get('total', 0))
+        } for v in ventas_dia]
         self.send_json(200, {"ok": True, "corte": resumen})
+
+    def handle_corte_csv(self, dia):
+        with LOCK:
+            ventas_dia = [v for v in MEM_DB.get('ventas', []) if v.get('dia') == dia]
+        lineas = ['Folio,ID,Fecha,Cliente,Vehiculo,Metodo,Facturado,UUID,Total']
+        for v in ventas_dia:
+            celdas = [str(v.get('folio', '')), str(v.get('id', '')), str(v.get('fecha', '')),
+                      str(v.get('cliente', '')), str(v.get('auto', '')), str(v.get('metodo', '')),
+                      'SI' if v.get('facturado') else 'NO', str(v.get('uuid', '')), str(round(float(v.get('total', 0)), 2))]
+            seguras = []
+            for c in celdas:
+                if ',' in c or '"' in c or '\n' in c:
+                    seguras.append('"' + c.replace('"', '""') + '"')
+                else:
+                    seguras.append(c)
+            lineas.append(','.join(seguras))
+        raw = '\ufeff' + '\n'.join(lineas) + '\n'
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/csv; charset=utf-8')
+        self.send_header('Content-Disposition', f'attachment; filename="corte-caja-galera-{dia}.csv"')
+        self.send_header('Content-Length', str(len(raw.encode('utf-8'))))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(raw.encode('utf-8'))
 
     def handle_img(self, payload):
         with LOCK:

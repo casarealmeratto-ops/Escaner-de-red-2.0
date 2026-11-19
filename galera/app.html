@@ -69,6 +69,14 @@ nav button.active{color:var(--red)}
   <h3>💰 Caja del Día</h3>
   <div id="corteDia"></div>
   <button class="btn btn-blue" onclick="cargarCorte()">🔄 Actualizar Corte</button>
+  <div style="margin-top:18px;border-top:1px dashed var(--border);padding-top:12px">
+    <b style="font-size:.9rem">🏦 Banco y Conciliación Automática</b>
+    <p style="font-size:.75rem;color:var(--muted);margin:4px 0">Pega los movimientos de tu banco (CSV/app bancaria): una línea por movimiento <code>fecha,concepto,monto</code></p>
+    <textarea id="bancoCsv" rows="4" placeholder="2026-11-18,TRANSFERENCIA RECIBIDA VENTA 12,5650.00"></textarea>
+    <button class="btn btn-blue" onclick="importarBanco()">📥 Importar movimientos</button>
+    <button class="btn btn-green" style="margin-top:8px" onclick="conciliarBanco()">🤝 Conciliar automático</button>
+    <div id="conRes" style="margin-top:10px"></div>
+  </div>
   <div style="margin-top:12px">
     <input id="cgConcepto" placeholder="Concepto (ej. Compra de refacciones, gasto, etc.)">
     <input id="cgMonto" type="number" placeholder="Monto">
@@ -155,7 +163,29 @@ nav button.active{color:var(--red)}
   </div>
 
   <div style="margin-top:16px">
-    <b style="font-size:.85rem">💾 Memoria Local *</b>
+    <b style="font-size:.85rem">💳 Pasarela de Pagos (Mercado Pago)</b>
+    <input id="mpToken" type="password" placeholder="Access Token de Producción (mercadopago.com.mx > desarrolladores)">
+    <input id="mpKey" placeholder="Public Key (opcional)">
+    <button class="btn btn-blue" onclick="savePagos()">Guardar Pagos</button>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:6px">Webhook para cobros aprobados: <code>/api/pagos/webhook</code></p>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">🏛️ Fiscal SAT (CFDI 4.0) y Reformas</b>
+    <input id="fTasaIva" type="number" step="0.0001" placeholder="Tasa IVA (0.16 = 16%)">
+    <button class="btn btn-blue" onclick="saveTasa()">Guardar Tasa IVA</button>
+    <div id="fiscalAvisos" style="margin-top:8px"></div>
+    <button class="btn btn-blue" style="margin-top:8px" onclick="validarFiscal()">🔎 Validar configuración fiscal</button>
+    <button class="btn btn-green" style="margin-top:8px" onclick="buscarReformas()">📡 Buscar reformas (SAT / DOF)</button>
+    <div id="reformasRes" style="margin-top:8px"></div>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">💾 Resguardo de Información</b>
+    <p style="font-size:.72rem;color:var(--muted);margin:4px 0">Backups rotativos automáticos + respaldo completo descargable (base, fotos, archivo histórico y facturas):</p>
+    <a href="/api/respaldo" style="background:#334155;color:#fff;text-decoration:none;border-radius:10px;padding:12px;text-align:center;display:block;font-weight:800">⬇ Descargar resguardo completo (.zip)</a>
+    <button class="btn btn-sc" onclick="verMemoria()" style="background:#475569;margin-top:8px">Ver uso de memoria</button>
+  </div>
     <div id="memoriaEstado"></div>
     <button class="btn btn-sc" onclick="verMemoria()" onmouseover="" style="background:#334155">Ver uso de memoria</button>
   </div>
@@ -194,25 +224,27 @@ async function sync(){
   }catch(e){}
 }
 async function push(){
-  await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+  await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:state.config})});
   sync();
 }
 async function addPieza(){
   const desc=document.getElementById('fDesc').value.trim();
   if(!desc){alert('Escribe la descripción de la pieza');return;}
-  state.inventario.unshift({
+  const r=await fetch('/api/pieza',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'add',pieza:{
     id:Date.now(),
     cat:document.getElementById('fCat').value||'Colisión',
     desc:desc,
     prov:document.getElementById('fProv').value.trim(),
     precio:parseFloat(document.getElementById('fPrecio').value)||0,
-    stock:parseInt(document.getElementById('fStock').value)||0,
-    img:''
-  });
-  await push();
-  document.getElementById('fDesc').value='';
-  document.getElementById('fPrecio').value='';
-  alert('Pieza guardada ✔ Ahora puedes subirle foto');
+    stock:parseInt(document.getElementById('fStock').value)||0
+  }})});
+  const res=await r.json();
+  if(res.ok){
+    document.getElementById('fDesc').value='';
+    document.getElementById('fPrecio').value='';
+    alert('Pieza guardada ✔ Ahora puedes subirle foto');
+  }else alert('⚠ '+res.error);
+  sync();
 }
 function pedirFoto(id){document.getElementById('fileImg').dataset.pid=id;document.getElementById('fileImg').click();}
 async function subirFoto(input){
@@ -234,14 +266,15 @@ async function subirFoto(input){
 }
 async function borrarPieza(id){
   if(!confirm('¿Eliminar esta pieza del inventario?'))return;
-  state.inventario=state.inventario.filter(p=>p.id!==id);
-  await push();
+  await fetch('/api/pieza',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'del',id})});
+  sync();
 }
 async function ajustarStock(id,d){
   const p=state.inventario.find(x=>x.id===id);
   if(!p)return;
-  p.stock=Math.max(0,(parseInt(p.stock)||0)+d);
-  await push();
+  const nuevo=Math.max(0,(parseInt(p.stock)||0)+d);
+  await fetch('/api/pieza',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'update',id,stock:nuevo})});
+  sync();
 }
 async function iaDesc(id){
   const r=await fetch('/api/ia/descripcion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
@@ -293,7 +326,8 @@ async function cargarCorte(){
     </div>
     <div class="stat"><span>Ingresos manuales</span><b>${money(c.ingresos)}</b></div>
     <div class="stat"><span>Egresos / gastos</span><b>${money(c.egresos)}</b></div>
-    <div class="stat"><span>Total esperado del día</span><b>${money(c.total_dia)}</b></div>`;
+    <div class="stat"><span>Total esperado del día</span><b>${money(c.total_dia)}</b></div>
+    <button class="btn btn-blue" onclick="location.href='/api/corte.csv'">⬇ Descargar corte CSV (Excel)</button>`;
 }
 async function cargarAgentes(){
   document.getElementById('iaAgentes').innerHTML='<p style="color:var(--muted);font-size:.85rem">Analizando…</p>';
@@ -363,6 +397,21 @@ async function saveIntMeli(){
     meli_token:document.getElementById('meliToken').value,meli_user_id:document.getElementById('meliUser').value,meli_categoria:document.getElementById('meliCat').value})});
   sync();alert('Mercado Libre guardado ✔');
 }
+async function savePagos(){
+  const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:{pagos:{mp_token:document.getElementById('mpToken').value,mp_public_key:document.getElementById('mpKey').value}}})});
+  if(r.ok)alert('Mercado Pago guardado ✔');else alert('⚠ Error');
+  sync();
+}
+async function saveTasa(){
+  const tasa=parseFloat(document.getElementById('fTasaIva').value);
+  if(!tasa||tasa<=0||tasa>1){alert('Tasa inválida (ej. 0.16)');return;}
+  state.config.facturalo=state.config.facturalo||{};
+  state.config.facturalo.tasa_iva=tasa;
+  state.config.tasa_iva=tasa;
+  const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:state.config})});
+  alert(r.ok?'Tasa IVA guardada ✔ (aplica a nuevos CFDI)':'⚠ Error');
+  sync();
+}
 async function savePartner(){
   await fetch('/api/integraciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:document.getElementById('pKey').value})});
   sync();alert('API Partner guardada ✔');
@@ -382,6 +431,48 @@ async function notificarWA(ventaId){
   const r=await fetch('/api/whatsapp/notificar-venta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({venta_id:ventaId,tel})});
   const res=await r.json();
   alert(res.ok?'✉ Enviado por WhatsApp ✔':'⚠ '+res.error);
+}
+async function cobrarMP(id){
+  const r=await fetch('/api/pagos/preferencia',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedido_id:id})});
+  const res=await r.json();
+  if(res.ok&&res.init_point){window.open(res.init_point,'_blank');}
+  else alert('⚠ '+res.error);
+}
+async function importarBanco(){
+  const texto=document.getElementById('bancoCsv').value.trim();
+  if(!texto){alert('Pega los movimientos del banco (fecha, concepto, monto)');return;}
+  const r=await fetch('/api/banco/importar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineas:texto.split('\n')})});
+  const res=await r.json();
+  if(res.ok){alert('✅ '+res.agregados+' movimientos importados');document.getElementById('bancoCsv').value='';sync();}
+  else alert('⚠ '+res.error);
+}
+async function conciliarBanco(){
+  document.getElementById('conRes').innerHTML='<i>Conciliando…</i>';
+  const r=await fetch('/api/conciliar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dias:7})});
+  const res=await r.json();
+  if(!res.ok){document.getElementById('conRes').textContent='⚠ '+res.error;return;}
+  document.getElementById('conRes').innerHTML=
+    '<div class="stat"><span>✅ Conciliados automáticamente</span><b>'+res.conciliados+'</b></div>'+
+    '<div class="stat"><span>⚠ Sin match (revisar)</span><b>'+res.sin_match+'</b></div>'+
+    res.pendientes.slice(0,6).map(b=>'<div class="stat"><span>'+b.fecha+' · '+b.concepto+'</span><b>'+money(b.monto)+'</b></div>').join('');
+  sync();
+}
+async function validarFiscal(){
+  try{
+    const r=await fetch('/api/fiscal/validar',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const res=await r.json();
+    document.getElementById('fiscalAvisos').innerHTML='<div class="stat"><span>'+res.avisos.join('<br>')+'</span><b>'+(res.ok?'✔':'⚠')+'</b></div>';
+  }catch(e){}
+}
+async function buscarReformas(){
+  document.getElementById('reformasRes').innerHTML='<i>Consultando sat.gob.mx y dof.gob.mx…</i>';
+  const r=await fetch('/api/fiscal/reformas',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const res=await r.json();
+  if(!res.ok){document.getElementById('reformasRes').textContent='⚠ '+res.error;return;}
+  document.getElementById('reformasRes').innerHTML=res.resultados.map(x=>x.error?
+    '<div class="stat"><span>⚠ '+x.fuente+': '+x.error+'</span></div>':
+    '<div class="stat"><span><a href="'+x.url+'" target="_blank" style="color:var(--blue)">'+x.titulo+'</a><br><small style="color:var(--muted)">'+x.fuente+'</small></span></div>').join('')
+    ||'<div class="stat"><span>Conectado. Sin novedades.</span></div>';
 }
 function render(){
   document.getElementById('listaInv').innerHTML=state.inventario.map(p=>`
@@ -409,7 +500,8 @@ function render(){
         ${p.estado==='nuevo'?`
           <button class="btn btn-green btn-sm" onclick="confirmarPedido(${p.id},'Efectivo')">✔ Efectivo</button>
           <button class="btn btn-blue btn-sm" style="margin-top:4px" onclick="confirmarPedido(${p.id},'Transferencia')">✔ Transf.</button>
-          <button class="btn btn-red btn-sm" style="margin-top:4px" onclick="cancelarPedido(${p.id})">✕</button>`:''}
+          <button class="btn btn-red btn-sm" style="margin-top:4px" onclick="cancelarPedido(${p.id})">✕</button>`
+          :(p.estado==='pagado'?`<span class="pill ok">💳 PAGADO</span><br><button class="btn btn-sm" style="background:#38a169;margin-top:4px" onclick="confirmarPedido(${p.id},'Transferencia')">✅ Registrar venta</button>`:'')}
       </div>
     </div>`).join('')||'<p style="color:var(--muted);font-size:.85rem">Sin pedidos web todavía.</p>';
   document.getElementById('listaVentas').innerHTML=(state.ventas||[]).map(v=>`
@@ -433,8 +525,14 @@ function render(){
   if(ic.meli_user_id)document.getElementById('meliUser').value=ic.meli_user_id;
   if(ic.meli_categoria)document.getElementById('meliCat').value=ic.meli_categoria;
   if(ic.api_key)document.getElementById('pKey').value=ic.api_key;
+  const pc=cfg.pagos||{};
+  setVal('mpToken',pc.mp_token||'');setVal('mpKey',pc.mp_public_key||'');
+  setVal('fTasaIva',(cfg.facturalo&&cfg.facturalo.tasa_iva!=null)?cfg.facturalo.tasa_iva:0.16);
 }
+function setVal(id,v){const e=document.getElementById(id);if(!e)return;if(document.activeElement!==e)e.value=v;}
+
 sync();
+validarFiscal();
 setInterval(sync,6000);
 </script>
 </body>
