@@ -1,4 +1,4 @@
-# 🔧 Sistema Integral La Galera Autopartes v6.1
+# 🔧 Sistema Integral Refaccionaria La Galera v6.1
 
 **E-commerce + ERP táctil + IA + Facturación CFDI 4.0 (SAT México) + Pagos + Conciliación bancaria**
 

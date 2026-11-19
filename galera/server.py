@@ -301,7 +301,7 @@ def construir_cfdi40(venta, receptor, fcfg):
         "LugarExpedicion": fcfg.get('emisor_cp', '72050'),
         "Emisor": {
             "Rfc": fcfg.get('emisor_rfc', 'XAXX010101000'),
-            "Nombre": fcfg.get('emisor_nombre', 'LA GALERA AUTOPARTES'),
+            "Nombre": fcfg.get('emisor_nombre', 'REFACCIONARIA LA GALERA'),
             "RegimenFiscal": fcfg.get('emisor_regimen', '612')
         },
         "Receptor": {
@@ -382,7 +382,7 @@ def construir_cfdi_global(ventas_dia, fcfg):
         "LugarExpedicion": fcfg.get('emisor_cp', '72050'),
         "Emisor": {
             "Rfc": fcfg.get('emisor_rfc', 'XAXX010101000'),
-            "Nombre": fcfg.get('emisor_nombre', 'LA GALERA AUTOPARTES'),
+            "Nombre": fcfg.get('emisor_nombre', 'REFACCIONARIA LA GALERA'),
             "RegimenFiscal": fcfg.get('emisor_regimen', '612')
         },
         "Receptor": {
@@ -485,7 +485,7 @@ def whatsapp_send(icfg, tel, mensaje):
 
 def armarMensajeVenta(venta):
     cfg = MEM_DB.get('config', {})
-    lineas = ["\U0001F527 *La Galera Autopartes*\n\u2714 Pedido N\u00ba " + str(venta.get('folio')) + " recibido\n"]
+    lineas = ["\U0001F527 *Refaccionaria La Galera*\n\u2714 Pedido N\u00ba " + str(venta.get('folio')) + " recibido\n"]
     for it in venta.get('items', []):
         lineas.append(f"\u2022 {it.get('cant', 1)} x {it.get('desc', '')} \u2014 ${float(it.get('precio', 0)):.2f}")
     lineas.append(f"\n*Total: ${float(venta.get('total', 0)):.2f}* (IVA incluido)")
@@ -534,7 +534,7 @@ def meli_publicar(item, icfg):
         'buying_mode': 'buy_it_now',
         'condition': 'new',
         'listing_type_id': (icfg.get('meli_listing') or 'gold_special').strip(),
-        'description': {'plain_text': f"{item.get('cat', '')} - {item.get('desc', '')}. Refaccion de colision con ajuste exacto. La Galera Autopartes, Puebla."[:5000]},
+        'description': {'plain_text': f"{item.get('cat', '')} - {item.get('desc', '')}. Refaccion de colision con ajuste exacto. Refaccionaria La Galera, Puebla."[:5000]},
         'pictures': pic or [{'source': 'https://http2.mlstatic.com/storage/mlapktor/places/homesquare.png'}],
         'attributes': [{'id': 'BRAND', 'value_name': item.get('prov', 'GENERICO')[:60]}]
     }
@@ -636,7 +636,7 @@ def ia_asesor(pregunta):
     r = resumen_negocio()
     contexto = json.dumps({'resumen': r, 'catalogo': r['piezas']}, ensure_ascii=False)
     respuesta_llm = ia_chat([
-        {'role': 'system', 'content': f"Eres el asesor de negocio de la refaccionaria La Galera Autopartes (Puebla, Mexico). Datos actuales: {contexto}. Da respuestas breves, practicas y accionables para el dueno de la tienda en Mexico."},
+        {'role': 'system', 'content': f"Eres el asesor de negocio de la refaccionaria Refaccionaria La Galera (Puebla, Mexico). Datos actuales: {contexto}. Da respuestas breves, practicas y accionables para el dueno de la tienda en Mexico."},
         {'role': 'user', 'content': str(pregunta)[:2000]}
     ])
     if respuesta_llm:
@@ -662,9 +662,9 @@ def ia_descripcion(pid):
     ], max_tokens=120)
     if not descripcion_llm:
         if item.get('prov') and item.get('prov') != 'GENERICO':
-            descripcion_llm = f"{item.get('desc')} marca {item.get('prov')}, linea {item.get('cat')}. Pieza con ajuste exacto, en venta en La Galera Autopartes Puebla con ${item.get('precio')} IVA incluido."
+            descripcion_llm = f"{item.get('desc')} marca {item.get('prov')}, linea {item.get('cat')}. Pieza con ajuste exacto, en venta en Refaccionaria La Galera Puebla con ${item.get('precio')} IVA incluido."
         else:
-            descripcion_llm = f"{item.get('desc')} linea {item.get('cat')}. Pieza con ajuste exacto, en venta en La Galera Autopartes Puebla con ${item.get('precio')} IVA incluido."
+            descripcion_llm = f"{item.get('desc')} linea {item.get('cat')}. Pieza con ajuste exacto, en venta en Refaccionaria La Galera Puebla con ${item.get('precio')} IVA incluido."
     return {'ok': True, 'id': pid, 'descripcion': descripcion_llm, 'motor': 'ia-nube' if get_ia_cfg()['key'] else 'agentes-locales'}
 
 
@@ -1638,7 +1638,7 @@ def main():
     httpd = socketserver.ThreadingTCPServer(('0.0.0.0', PUERTO), Handler)
     ip = get_local_ip()
     print('=' * 58)
-    print('  LA GALERA AUTOPARTES v6.0 - E-commerce + ERP + SAT')
+    print('  REFACCIONARIA LA GALERA v6.0 - E-commerce + ERP + SAT')
     print('=' * 58)
     print(f'  Sitio Público    : http://localhost:{PUERTO}/index.html')
     print(f'  Panel ERP Táctil : http://localhost:{PUERTO}/app.html')
