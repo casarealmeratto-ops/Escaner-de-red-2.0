@@ -107,6 +107,85 @@ nav button.active{color:var(--red)}
   </div>
 </div>
 
+<div id="tab-crm" class="card" style="display:none">
+  <h3>🤝 CRM · Ventas B2B, Envíos, Reseñas y Campañas</h3>
+
+  <b style="font-size:.85rem">🧾 Cotizaciones B2B (VTA-04)</b>
+  <div id="cotForm">
+    <input id="cotCli" placeholder="Cliente / taller">
+    <input id="cotEmp" placeholder="Empresa (opcional)">
+    <input id="cotTel" placeholder="Teléfono (opcional)">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <select id="cotPieza" style="flex:2;min-width:140px"></select>
+      <input id="cotCant" type="number" value="1" min="1" style="width:64px">
+      <button class="btn btn-sm" style="background:#7c3aed" onclick="cotAdd()">+ Agregar</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <input id="cotDesc" placeholder="Concepto manual (opcional)" style="flex:2;min-width:140px">
+      <input id="cotPrecio" type="number" step="0.01" placeholder="Precio" style="width:90px">
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <input id="cotDscto" type="number" step="1" value="0" min="0" max="50" style="width:80px" title="% de descuento">
+      <label style="font-size:.75rem;color:var(--muted)">% descuento</label>
+      <input id="cotValidez" type="number" value="15" min="1" style="width:64px" title="días de validez">
+      <label style="font-size:.75rem;color:var(--muted)">días vigencia</label>
+    </div>
+    <button class="btn btn-blue" style="margin-top:6px" onclick="cotCrear()">📄 Crear cotización</button>
+    <div id="cotItems" style="font-size:.78rem;color:var(--muted);margin-top:6px">Sin conceptos aún.</div>
+  </div>
+  <div id="cotLista" style="margin-top:10px"></div>
+
+  <div style="margin-top:18px">
+    <b style="font-size:.85rem">🚚 Envíos y rastreo (ENT-01/02/03)</b>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <select id="envPedido" style="flex:2;min-width:150px"></select>
+      <select id="envPaq" style="flex:1;min-width:120px"><option value="Estandar">Estafeta 2-3d $80</option><option value="Express">DHL 1d $150</option><option value="99minutos">99minutos $95</option><option value="FedEx">FedEx 2d $130</option></select>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <input id="envGuia" placeholder="No. guía (opcional si ya se imprimió)" style="flex:1;min-width:140px">
+      <input id="envPeso" type="number" step="0.1" placeholder="kg" style="width:70px" value="2">
+      <button class="btn btn-sm" style="background:#0891b2" onclick="envRecomendar()">💡 Recomendar</button>
+      <button class="btn btn-blue" onclick="envCrear()">🚚 Crear envío</button>
+    </div>
+    <div id="envRecom" style="font-size:.78rem;color:var(--muted);margin-top:4px"></div>
+  </div>
+  <div id="envLista" style="margin-top:10px"></div>
+
+  <div style="margin-top:18px">
+    <b style="font-size:.85rem">🌟 Reseñas y NPS (CX-01)</b>
+    <div id="resResumen" style="font-size:.85rem;margin-top:4px"></div>
+    <div id="resLista" style="margin-top:6px"></div>
+  </div>
+
+  <div style="margin-top:18px">
+    <b style="font-size:.85rem">📣 Campañas Email/SMS (MKT-05)</b>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <input id="camNom" placeholder="Nombre" style="flex:1;min-width:130px">
+      <select id="camCanal" style="flex:1;min-width:100px"><option value="email">Email</option><option value="sms">SMS</option><option value="ambos">Ambos</option></select>
+      <select id="camSeg" style="flex:1;min-width:130px"><option value="todos">Todos los contactos</option><option value="abandonados">Carritos abandonados</option><option value="compradores">Compradores</option></select>
+    </div>
+    <input id="camAsunto" placeholder="Asunto (email)">
+    <textarea id="camTexto" rows="3" placeholder="Mensaje (promos, precios, fecha)"></textarea>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="camCrear()">Crear campaña</button>
+      <button class="btn btn-amber" onclick="camAbandonados()">🛒 Recuperar carritos (&gt;24 h)</button>
+    </div>
+    <div id="camAviso" style="font-size:.72rem;color:var(--muted);margin-top:4px"></div>
+  </div>
+  <div id="camLista" style="margin-top:10px"></div>
+
+  <div style="margin-top:18px">
+    <b style="font-size:.85rem">📑 Contactos</b>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <input id="ctNombre" placeholder="Nombre" style="flex:1;min-width:110px">
+      <input id="ctTel" placeholder="WhatsApp" style="width:120px">
+      <input id="ctEmail" placeholder="Email" style="flex:1;min-width:120px">
+      <button class="btn btn-green" onclick="ctAdd()">+ Guardar</button>
+    </div>
+  </div>
+  <div id="ctLista" style="margin-top:10px;font-size:.82rem"></div>
+</div>
+
 <div id="tab-cfg" class="card" style="display:none">
   <h3>⚙️ Configuración</h3>
 
@@ -183,6 +262,18 @@ nav button.active{color:var(--red)}
   </div>
 
   <div style="margin-top:16px">
+    <b style="font-size:.85rem">✉️ Email/SMS (MKT-05)</b>
+    <input id="emHost" placeholder="SMTP host (ej. smtp.gmail.com)">
+    <input id="emPort" type="number" placeholder="Puerto (587)">
+    <input id="emUser" placeholder="Usuario email">
+    <input id="emPass" type="password" placeholder="Contraseña / app-password">
+    <input id="emRemit" placeholder="Nombre remitente (Refaccionaria La Galera)">
+    <input id="smsHook" placeholder="Webhook SMS (POST {to,text})">
+    <button class="btn btn-blue" onclick="saveEmail()">Guardar Email/SMS</button>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Gmail: activa 2FA y usa contraseña de aplicación. SMS: cualquier servicio con webhook.</p>
+  </div>
+
+  <div style="margin-top:16px">
     <b style="font-size:.85rem">💾 Resguardo de Información</b>
     <p style="font-size:.72rem;color:var(--muted);margin:4px 0">Backups rotativos automáticos + respaldo completo descargable (base, fotos, archivo histórico y facturas):</p>
     <a href="/api/respaldo" style="background:#334155;color:#fff;text-decoration:none;border-radius:10px;padding:12px;text-align:center;display:block;font-weight:800">⬇ Descargar resguardo completo (.zip)</a>
@@ -199,6 +290,7 @@ nav button.active{color:var(--red)}
   <button onclick="go('ped',this)">📥<br>Pedidos</button>
   <button onclick="go('caja',this)">💰<br>Caja</button>
   <button onclick="go('ven',this)">🧾<br>Ventas</button>
+  <button onclick="go('crm',this)">🤝<br>CRM</button>
   <button onclick="go('ia',this)">🤖<br>IA</button>
   <button onclick="go('cfg',this)">⚙️<br>Config</button>
 </nav>
@@ -208,10 +300,11 @@ function toggleTheme(){document.body.classList.toggle('dark');localStorage.setIt
 if(localStorage.getItem('lgd')==='d')document.body.classList.add('dark');
 function money(n){return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function go(t,b){
-  ['inv','ped','caja','ven','ia','cfg'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'block':'none');
+  ['inv','ped','caja','ven','crm','ia','cfg'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'block':'none');
   document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
   if(t==='caja')cargarCorte();
+  if(t==='crm')cargarCRM();
   if(t==='ia')cargarAgentes();
   if(t==='ped'||t==='inv')render();
 }
@@ -302,6 +395,100 @@ async function cancelarPedido(id){
   await fetch('/api/pedido-accion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,accion:'cancelar'})});
   sync();
 }
+
+let cotItems=[];
+function cotFillSelect(){
+  const s=document.getElementById('cotPieza');if(!s)return;
+  s.innerHTML='<option value="">\u2014 elegir pieza \u2014</option>'+(state.inventario||[]).map(p=>`<option value="${p.id}">${p.desc} · ${money(p.precio)}</option>`).join('');
+  const ep=document.getElementById('envPedido');if(ep){
+    ep.innerHTML='<option value="">\u2014 pedido web a enviar \u2014</option>'+(state.pedidos||[]).filter(p=>p.estado!=='cancelado').map(p=>`<option value="${p.id}">#${p.folio||p.id} ${p.nombre} ${money(p.total)}</option>`).join('');
+  }
+}
+function cotAdd(){
+  const sel=document.getElementById('cotPieza');
+  if(sel.value){const p=(state.inventario||[]).find(x=>String(x.id)===sel.value);if(!p)return;cotItems.push({id:p.id,desc:p.desc,precio:p.precio,cant:parseInt(document.getElementById('cotCant').value)||1});sel.value='';}
+  else{const d=document.getElementById('cotDesc').value.trim(),pr=parseFloat(document.getElementById('cotPrecio').value)||0;if(!d||pr<=0){alert('Elige pieza o escribe concepto y precio');return;}cotItems.push({desc:d,precio:pr,cant:parseInt(document.getElementById('cotCant').value)||1});document.getElementById('cotDesc').value='';document.getElementById('cotPrecio').value='';}
+  document.getElementById('cotItems').innerHTML=cotItems.map(i=>`\u2022 ${i.desc} x${i.cant} = ${money(i.precio*i.cant)}`).join('<br>');
+}
+async function cotCrear(){
+  if(!cotItems.length){alert('Agrega al menos un concepto');return;}
+  const r=await fetch('/api/cotizacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'crear',cliente:document.getElementById('cotCli').value,empresa:document.getElementById('cotEmp').value,tel:document.getElementById('cotTel').value,descuento_pct:parseFloat(document.getElementById('cotDscto').value)||0,validez_dias:parseInt(document.getElementById('cotValidez').value)||15,items:cotItems})});
+  const res=await r.json();
+  if(res.ok){alert('\u2705 Cotización '+res.cotizacion.folio+' creada por '+money(res.cotizacion.total));cotItems=[];document.getElementById('cotItems').textContent='Sin conceptos aún.';cargarCRM();}
+  else alert('\u26a0 '+res.error);
+}
+function cotImprimir(folio){window.open('/api/cotizacion.html?folio='+encodeURIComponent(folio),'_blank');}
+async function cotAnular(folio){if(!confirm('¿Anular '+folio+'?'))return;await fetch('/api/cotizacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'anular',folio})});cargarCRM();}
+async function envRecomendar(){
+  const r=await fetch('/api/envio/recomendar?peso='+(parseFloat(document.getElementById('envPeso').value)||1)+'&urgente=0');
+  const res=await r.json();
+  document.getElementById('envRecom').innerHTML=(res.opciones||[]).map(o=>`${o.clave===res.recomendada?'\u2b50':'\u00b7'} <b>${o.nombre}</b> $${o.costo} (${o.dias} · hasta ${o.max_kg}kg)`).join('<br>')||'Ninguna paquetería soporta ese peso';
+}
+async function envCrear(){
+  const pid=parseInt(document.getElementById('envPedido').value);
+  if(!pid){alert('Elige un pedido');return;}
+  const r=await fetch('/api/envio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'crear',pedido_id:pid,paqueteria:document.getElementById('envPaq').value,guia:document.getElementById('envGuia').value})});
+  const res=await r.json();
+  if(res.ok){alert('\u2705 Envío creado (guía '+(res.envio.guia||'-')+')');document.getElementById('envGuia').value='';cargarCRM();}
+  else alert('\u26a0 '+res.error);
+}
+async function envEstado(id,estado){
+  if(estado==='entregado'&&!confirm('¿Marcar entregado? Se generará encuesta de satisfacción.'))return;
+  await fetch('/api/envio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'estado',id,estado})});
+  cargarCRM();
+}
+async function envRastrear(id){const r=await fetch('/api/envio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'rastrear',id})});const res=await r.json();if(res.ok)window.open(res.url,'_blank');else alert('\u26a0 '+res.error);}
+async function resResponder(id){const sc=prompt('Calificación del cliente (1 a 10):');if(sc===null)return;const com=prompt('Comentario (opcional):')||'';const r=await fetch('/api/resena',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'responder',id,score:parseInt(sc),comentario:com})});const res=await r.json();if(!res.ok)alert('\u26a0 '+res.error);cargarCRM();}
+function resWA(tel,texto){window.open('https://wa.me/'+(tel||'').replace(/\D/g,'')+'?text='+encodeURIComponent(texto||''),'_blank');}
+async function camCrear(){
+  const r=await fetch('/api/campana',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'crear',nombre:document.getElementById('camNom').value,canal:document.getElementById('camCanal').value,segmento:document.getElementById('camSeg').value,asunto:document.getElementById('camAsunto').value,texto:document.getElementById('camTexto').value})});
+  const res=await r.json();
+  if(res.ok){document.getElementById('camNom').value='';document.getElementById('camTexto').value='';cargarCRM();}
+  else alert('\u26a0 '+res.error);
+}
+async function camEnviar(id){const r=await fetch('/api/campana',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'enviar',id})});const res=await r.json();if(res.ok)alert('\u2705 '+(res.enviados||0)+'/'+res.destinatarios+' enviados');else alert('\u26a0 '+res.error);cargarCRM();}
+async function camAbandonados(){
+  const r=await fetch('/api/campana',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'abandonados',horas:24})});
+  const res=await r.json();
+  if(!res.hay){alert('Sin carritos abandonados \u00a1yei!');return;}
+  res.recuperaciones.forEach(x=>{if(confirm('Enviar recuperación por WhatsApp a '+x.tel+'?\n\n'+x.texto))window.open(x.link,'_blank');});
+}
+async function ctAdd(){
+  const tel=document.getElementById('ctTel').value.trim();
+  if(!tel){alert('Escribe el WhatsApp (10 dígitos)');return;}
+  await fetch('/api/contacto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre:document.getElementById('ctNombre').value,tel:tel,email:document.getElementById('ctEmail').value})});
+  document.getElementById('ctNombre').value='';document.getElementById('ctTel').value='';document.getElementById('ctEmail').value='';
+  cargarCRM();
+}
+async function ctDel(tel){await fetch('/api/contacto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'del',tel:tel})});cargarCRM();}
+async function saveEmail(){
+  await fetch('/api/config-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    host:document.getElementById('emHost').value.trim(),port:document.getElementById('emPort').value.trim(),
+    user:document.getElementById('emUser').value.trim(),pass:document.getElementById('emPass').value,
+    remitente:document.getElementById('emRemit').value.trim(),sms_webhook:document.getElementById('smsHook').value.trim()})});
+  alert('\u2705 Email/SMS guardado');
+  cargarCRM();
+}
+async function cargarCRM(){
+  try{
+    const [rc,re,rr,rm,rct]=await Promise.all([fetch('/api/cotizaciones'),fetch('/api/envios'),fetch('/api/resenas'),fetch('/api/campanas'),fetch('/api/contactos')]);
+    const cot=(await rc.json()).cotizaciones||[];
+    const envd=(await re.json());
+    const rs=(await rr.json());
+    const cm=(await rm.json());
+    const ct=(await rct.json()).contactos||[];
+    cotFillSelect();
+    document.getElementById('cotLista').innerHTML=cot.length?'<table style="width:100%;font-size:.8rem">'+cot.slice(0,15).map(c=>`<tr><td>${c.folio}${c.estado==='anulada'?' (anulada)':''}<br><span style="color:var(--muted)">${c.cliente} · ${c.ts}</span></td><td style="text-align:right">${money(c.total)}<br><button class="btn btn-sm btn-blue" onclick="cotImprimir('${c.folio}')">\U0001f5a8 PDF</button> <button class="btn btn-sm btn-red" onclick="cotAnular('${c.folio}')">\u2715</button></td></tr>`).join('')+'</table>':'<p style="font-size:.78rem;color:var(--muted)">A\u00fan no hay cotizaciones B2B.</p>';
+    document.getElementById('envLista').innerHTML=(envd.envios||[]).length?'<table style="width:100%;font-size:.8rem">'+envd.envios.slice(0,15).map(e=>`<tr><td>${e.paqueteria} · guía ${e.guia}<br><span style="color:var(--muted)">${e.cliente||'s/nombre'} · ${e.ts}</span></td><td style="text-align:right"><span class="pill ${e.estado==='entregado'?'ok':''}">${e.estado}</span><br><button class="btn btn-sm" style="background:#0891b2" onclick="envRastrear(${e.id})">\U0001f50e rastrear</button> ${e.estado==='entregado'?'':`<button class="btn btn-sm btn-green" onclick="envEstado(${e.id},'entregado')">\u2714 entregado</button>`} ${e.estado==='preparado'?`<button class="btn btn-sm btn-amber" onclick="envEstado(${e.id},'en_transito')">\u2197 tránsito</button>`:''}</td></tr>`).join('')+'</table>':'<p style="font-size:.78rem;color:var(--muted)">Sin envíos registrados.</p>';
+    const u=rs.resumen||{};
+    document.getElementById('resResumen').innerHTML=u.respondidas?`<b>NPS ${u.nps}</b> · \u2764\ufe0f ${u.promotores} promotores · \U0001f610 ${u.pasivos||0} pasivos · \U0001f61f ${u.detractores} detractores · promedio ${u.promedio}`:'<span style="color:var(--muted);font-size:.78rem">Sin encuestas respondidas. Se generan automáticamente al marcar envío ENTREGADO.</span>';
+    document.getElementById('resLista').innerHTML=rs.resenas.length?'<table style="width:100%;font-size:.8rem">'+rs.resenas.slice(0,10).map(r=>`<tr><td>${r.estado==='pendiente'?'\u23f3 pendiente':('score '+r.score)} · ${r.cliente||r.tel||''}<br>${r.comentario?('<span style="color:var(--muted)">'+r.comentario+'</span>'):''}</td><td style="text-align:right">${r.estado==='pendiente'?`<button class="btn btn-sm btn-amber" onclick="resWA('${(r.tel||'').replace(/\D/g,'')}',${JSON.stringify(r.texto||'').slice(0,200)})">\U0001f4ac</button> <button class="btn btn-sm btn-blue" onclick="resResponder(${r.id})">\u2714</button>`:''}</td></tr>`).join('')+'</table>':'';
+    document.getElementById('camAviso').innerHTML='Email '+(cm.email_configurado?'\u2705 configurado':'\u26a0 sin SMTP (Config)')+' · SMS '+(cm.sms_configurado?'\u2705 configurado':'\u26a0 sin webhook (Config)');
+    document.getElementById('camLista').innerHTML=cm.campanas.length?'<table style="width:100%;font-size:.8rem">'+cm.campanas.slice(0,10).map(c=>`<tr><td>${c.nombre} (${c.canal}/${c.segmento})<br><span style="color:var(--muted)">${c.estado}${c.enviados!=null?' · '+c.enviados+' enviados':''} · ${c.ts}</span></td><td style="text-align:right">${c.estado==='creada'?`<button class="btn btn-sm btn-green" onclick="camEnviar(${c.id})">\u25b6 enviar</button>`:''}</td></tr>`).join('')+'</table>':'<p style="font-size:.78rem;color:var(--muted)">Sin campañas.</p>';
+    document.getElementById('ctLista').innerHTML=ct.length?ct.map(c=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${c.nombre||'s/nombre'} · ${c.tel}${c.email?' · '+c.email:''}</span><button class="btn btn-sm btn-red" onclick="ctDel('${c.tel}')">\u2715</button></div>`).join(''):'<p style="font-size:.78rem;color:var(--muted)">Agrega contactos para campañas (o se llenan solos con pedidos web).</p>';
+  }catch(e){}
+}
+
 async function registrarMov(){
   const monto=parseFloat(document.getElementById('cgMonto').value);
   if(!monto||monto<=0){alert('Monto inválido');return;}
@@ -312,7 +499,7 @@ async function registrarMov(){
     metodo:document.getElementById('cgMetodo').value
   })});
   document.getElementById('cgConcepto').value='';document.getElementById('cgMonto').value='';
-  cargarCorte();sync();
+  cargarCorte();sync();cargarCRM();
 }
 async function cargarCorte(){
   const r=await fetch('/api/caja/corte',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});

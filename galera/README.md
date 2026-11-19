@@ -1,6 +1,6 @@
-# 🔧 Sistema Integral Refaccionaria La Galera v6.1
+# 🔧 Sistema Integral Refaccionaria La Galera v6.2
 
-**E-commerce + ERP táctil + IA + Facturación CFDI 4.0 (SAT México) + Pagos + Conciliación bancaria**
+**E-commerce + ERP táctil + IA + CFDI 4.0 + Pagos + Conciliación bancaria + CRM (envíos, NPS, campañas, cotizaciones B2B)**
 
 Servidor 24/7 que corre igual en **Android (Termux), Windows, Linux y macOS** — solo necesita Python 3 (sin dependencias externas). Memoria local que crece automáticamente con la base de datos.
 
@@ -34,6 +34,17 @@ Servidor 24/7 que corre igual en **Android (Termux), Windows, Linux y macOS** �
 | ⚡ **Sync robusto** | Ventas/pedidos/caja/mensajes son del servidor: los clientes solo editan inventario y config. Alta/ajuste/baja de piezas va por `/api/pieza` (operación granular) sin pisar datos entre dispositivos |
 | 📊 **Corte CSV fiel** | `/api/corte.csv` exporta el corte del día en el formato histórico `Folio,ID,Fecha,Cliente,Vehiculo,Metodo,Facturado,UUID,Total` (compatible Excel) |
 | 📈 **IVA por zona** | Botones "🏙️ Zona Centro 16%" y "🌎 Frontera 8%" en Config → Fiscal. El validador avisa si la tasa usada no es 0.16 ó 0.08 (tasas vigentes 2026: Ley del IVA + estímulo fronterizo fichas 3/DEC-5 y 4/DEC-5 del Anexo 2 RMF, vigente hasta 31-dic-2026) |
+
+## 🆕 Novedades v6.2
+
+| Módulo | Descripción |
+|---|---|
+| 🚚 **Envíos y rastreo (ENT)** | Nueva pestaña CRM: asigna paquetería al pedido (Estafeta, DHL, 99minutos, FedEx), genera/registra guía, recomendador automático por peso (`/api/envio/recomendar`), rastreo con un toque (URL oficial de la paquetería) y flujo de estados preparado → tránsito → entregado |
+| 🌟 **Reseñas y NPS (CX)** | Al marcar un envío ENTREGADO se genera encuesta automática de satisfacción (1–10) con botón WhatsApp pre-armado. `/api/resenas` calcula **NPS** (promotores − detractores), promedio y desglose |
+| 📣 **Campañas Email/SMS (MKT-05)** | Segmentos: todos, compradores y **carritos abandonados (&gt;24 h)** con mensaje de recuperación y link wa.me listo. Email por SMTP propio (Gmail con app-password) y SMS por webhook genérico `(POST {to,text})`. Configuración en ERP → Config → Email/SMS |
+| 🧾 **Cotizaciones B2B (VTA-04)** | Erre que erre con folio `COT-AAAAMMDD-NN`, piezas del inventario o conceptos manuales, descuento %, validez en días y desglose subtotal/IVA/total con la tasa de tu zona. Impresión/PDF profesional (`/api/cotizacion.html?folio=...`) con marca Refaccionaria La Galera |
+| 📑 **Contactos (CRM base)** | Agenda propia; se alimenta sola con pedidos web. Alimenta segmentos de campañas |
+| 💾 **Archivo histórico extendido** | cotizaciones, envíos, reseñas y campañas se archivan solos (500 calientes + archivo mensual) |
 
 ---
 
@@ -138,4 +149,10 @@ galera/
 - Feed CSV, API Partner con llave (401 sin llave) ✅
 - WhatsApp webhook verificación challenge + recepción de mensajes ✅
 - IA: asesor y agentes locales; descripción automática de producto ✅
+- Cotizaciones B2B: folio, descuento, IVA por zona, PDF imprimible y anulación ✅
+- Envíos: crear por pedido, recomendar por peso, rastrear (URL oficial), estados y encuesta automática al entregar ✅
+- Reseñas/NPS: score 1–10 validado, NPS con promotores/pasivos/detractores ✅
+- Campañas: crear/enviar por email(SMTP)/SMS(webhook), segmentos y carritos abandonados ✅
+- Contactos: alta/actualización/borrado ✅
+- Archivado con las nuevas colecciones (cotizaciones/envíos/resenas/campañas) ✅
 - Archivado automático: 600 registros → 500 calientes + archivo mensual ✅

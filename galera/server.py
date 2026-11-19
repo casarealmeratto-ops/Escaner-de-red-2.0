@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import http.server, socketserver, os, sys, json, threading, datetime, time, shutil, socket, re, zipfile, io, urllib.request, urllib.error, urllib.parse, base64
+import http.server, socketserver, os, sys, json, threading, datetime, time, shutil, socket, re, zipfile, io, urllib.request, urllib.error, urllib.parse, base64, smtplib
+from email.mime.text import MIMEText
 
 PUERTO = 8000
 CARPETA = os.path.dirname(os.path.abspath(__file__))
@@ -62,7 +63,13 @@ def default_db():
         "mensajes": [],
         "banco": [],
         "fiscal_check": {},
-        "config": {"integraciones": {}, "pagos": {}}
+        "envios": [],
+        "resenas": [],
+        "campanas": [],
+        "contactos": [],
+        "cotizaciones": [],
+        "cotizacion_consec": 1,
+        "config": {"integraciones": {}, "pagos": {}, "logistica": {}, "email": {}, "sms": {}}
     }
 
 def load_initial_db():
@@ -78,7 +85,16 @@ def load_initial_db():
                     data.setdefault('mensajes', [])
                     data.setdefault('banco', [])
                     data.setdefault('fiscal_check', {})
+                    data.setdefault('envios', [])
+                    data.setdefault('resenas', [])
+                    data.setdefault('campanas', [])
+                    data.setdefault('contactos', [])
+                    data.setdefault('cotizaciones', [])
+                    data.setdefault('cotizacion_consec', 1)
                     data.setdefault('config', {}).setdefault('integraciones', {})
+                    data.setdefault('config', {}).setdefault('logistica', {})
+                    data.setdefault('config', {}).setdefault('email', {})
+                    data.setdefault('config', {}).setdefault('sms', {})
                     data.setdefault('config', {}).setdefault('pagos', {})
                     data.setdefault('config', {}).setdefault('facturalo', {}).setdefault('tasa_iva', 0.16)
                     return data
@@ -145,7 +161,7 @@ def fecha_reg(reg):
 def archivar_si_necesario():
     with LOCK:
         cambios = False
-        for coleccion in ('ventas', 'caja', 'pedidos', 'mensajes'):
+        for coleccion in ('ventas', 'caja', 'pedidos', 'mensajes', 'cotizaciones', 'envios', 'resenas', 'campanas'):
             datos = MEM_DB.get(coleccion, [])
             if len(datos) <= ARCHIVO_LIMITE:
                 continue
@@ -551,6 +567,229 @@ def partner_key_valido(payload_key):
 # Funciona sin llave (agentes con reglas offline) y mejora con
 # cualquier API compatible OpenAI/Mistral (config.ia_url/ia_key).
 # ------------------------------------------------------------
+# ==============================================================
+# v6.2 - ENT logistica + CX resenas/NPS + MKT-05 campanas + VTA-04 cotizaciones
+# ==============================================================
+
+UA_NAVEGADOR = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36'
+
+PAQUETERIAS = {
+    'Estandar': {'nombre': 'Estafeta (2-3 dias)', 'dias': '2-3', 'costo_base': 80.0, 'max_kg': 30,
+                 'rastreo': 'https://rastreo.estafeta.com/Rastreo?guia={guia}'},
+    'Express': {'nombre': 'DHL Express (1 dia)', 'dias': '1', 'costo_base': 150.0, 'max_kg': 20,
+                'rastreo': 'https://www.dhl.com/mx-es/home/tracking.html?tracking-id={guia}'},
+    '99minutos': {'nombre': '99minutos (mismo dia)', 'dias': 'mismo dia', 'costo_base': 95.0, 'max_kg': 15,
+                  'rastreo': 'https://sistema.99minutos.com/rastreo/{guia}'},
+    'FedEx': {'nombre': 'FedEx (2 dias)', 'dias': '2', 'costo_base': 130.0, 'max_kg': 68,
+              'rastreo': 'https://www.fedex.com/fedextrack/?trknbr={guia}'}
+}
+
+ESTADOS_ENVIO = ('preparado', 'en_transito', 'entregado', 'rechazado')
+
+
+def get_logistica_cfg():
+    with LOCK:
+        return dict(MEM_DB.setdefault('config', {}).setdefault('logistica', {}) or {})
+
+
+def recomendar_paqueteria(peso_kg=1.0, urgente=False):
+    try:
+        peso_kg = max(0.1, float(peso_kg))
+    except (TypeError, ValueError):
+        peso_kg = 1.0
+    opciones = []
+    for clave, p in PAQUETERIAS.items():
+        if peso_kg > float(p.get('max_kg', 30)):
+            continue
+        opciones.append({'clave': clave, 'nombre': p['nombre'], 'dias': p['dias'],
+                         'costo': p.get('costo_base', 0.0), 'max_kg': p.get('max_kg', 30)})
+    opciones.sort(key=lambda o: o['costo'])
+    recomendada = opciones[0]['clave'] if opciones else None
+    if urgente and opciones:
+        rapidos = [o for o in opciones if o['dias'] in ('1', 'mismo dia')]
+        recomendada = rapidos[0]['clave'] if rapidos else opciones[0]['clave']
+    return {'peso_kg': round(peso_kg, 2), 'recomendada': recomendada, 'opciones': opciones}
+
+
+def rastrear_guia(paqueteria, guia):
+    p = PAQUETERIAS.get(paqueteria)
+    if not p:
+        return {'ok': False, 'error': 'Paqueteria no soportada', 'url': ''}
+    url = p['rastreo'].format(guia=urllib.parse.quote(str(guia)))
+    codigo = None
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': UA_NAVEGADOR, 'Accept-Language': 'es-MX,es'})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            codigo = r.status
+    except Exception as e:
+        codigo = 'sin_respuesta'
+    return {'ok': True, 'paqueteria': paqueteria, 'guia': str(guia), 'url': url,
+            'http': codigo, 'nota': 'Si el sitio de la paqueteria bloquea peticiones automaticas, abre la URL directamente'}
+
+
+def contactos_segmento(segmento='todos'):
+    with LOCK:
+        contactos = [dict(c) for c in MEM_DB.get('contactos', [])]
+    segmento = str(segmento or 'todos')
+    if segmento == 'abandonados':
+        tels = {p.get('tel', '') for p in carritos_abandonados(24) if p.get('tel', '')}
+        return [dict(c, **{'motivo': 'carrito abandonado'}) for c in contactos if c.get('tel', '') in tels]
+    if segmento == 'compradores':
+        with LOCK:
+            tels = {p.get('tel', '') for p in MEM_DB.get('pedidos', []) if p.get('estado') == 'confirmado' and p.get('tel', '')}
+        return [dict(c, **{'motivo': 'comprador'}) for c in contactos if c.get('tel', '') in tels]
+    return contactos
+
+
+def carritos_abandonados(horas=24):
+    try:
+        horas = max(0, int(horas))
+    except (TypeError, ValueError):
+        horas = 24
+    limite = datetime.datetime.now() - datetime.timedelta(hours=horas)
+    out = []
+    with LOCK:
+        for p in MEM_DB.get('pedidos', []):
+            if p.get('estado') != 'nuevo':
+                continue
+            try:
+                ts = datetime.datetime.strptime(p.get('ts', ''), '%Y-%m-%d %H:%M')
+            except (ValueError, TypeError):
+                continue
+            if ts < limite:
+                out.append(p)
+    return out
+
+
+def nps_resumen(lista):
+    respondidas = [r for r in lista if r.get('score') is not None]
+    n = len(respondidas)
+    if not n:
+        return {'total': len(lista), 'respondidas': 0, 'nps': None, 'promedio': None}
+    promotores = sum(1 for r in respondidas if int(r.get('score', 0)) >= 9)
+    detractores = sum(1 for r in respondidas if int(r.get('score', 0)) <= 6)
+    pasivos = n - promotores - detractores
+    promedio = sum(int(r.get('score', 0)) for r in respondidas) / float(n)
+    return {'total': len(lista), 'respondidas': n, 'promotores': promotores,
+            'pasivos': pasivos, 'detractores': detractores,
+            'nps': round((promotores - detractores) * 100.0 / n), 'promedio': round(promedio, 2)}
+
+
+def get_email_cfg():
+    with LOCK:
+        return dict(MEM_DB.setdefault('config', {}).setdefault('email', {}) or {})
+
+
+def get_sms_cfg():
+    with LOCK:
+        return dict(MEM_DB.setdefault('config', {}).setdefault('sms', {}) or {})
+
+
+def enviar_email_smtp(para, asunto, texto):
+    ecfg = get_email_cfg()
+    para = (para or '').strip()
+    if not (ecfg.get('host') and ecfg.get('user') and para):
+        return {'ok': False, 'error': 'SMTP sin configurar (Config > Email/SMS) o destinatario vacio'}
+    try:
+        msg = MIMEText(texto, 'plain', 'utf-8')
+        msg['Subject'] = asunto or 'Refaccionaria La Galera'
+        msg['From'] = ecfg.get('remitente') or ecfg.get('user')
+        msg['To'] = para
+        puerto = int(ecfg.get('port') or 587)
+        if ecfg.get('ssl') in ('1', 'true', 'True'):
+            srv = smtplib.SMTP_SSL(ecfg['host'], puerto, timeout=15)
+        else:
+            srv = smtplib.SMTP(ecfg['host'], puerto, timeout=15)
+            srv.ehlo()
+            srv.starttls()
+            srv.ehlo()
+        srv.login(ecfg['user'], ecfg.get('pass', ''))
+        srv.sendmail(msg['From'], [para], msg.as_string())
+        srv.quit()
+        return {'ok': True}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:200]}
+
+
+def enviar_sms_gateway(tel, texto):
+    scfg = get_sms_cfg()
+    url = (scfg.get('webhook') or '').strip()
+    tel = (tel or '').strip()
+    if not (url and tel):
+        return {'ok': False, 'error': 'SMS sin configurar (Config > Email/SMS) o telefono vacio'}
+    try:
+        datos = json.dumps({'to': tel, 'text': texto, 'mensaje': texto}).encode('utf-8')
+        req = urllib.request.Request(url, data=datos, headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            codigo = r.status
+        return {'ok': True, 'codigo': codigo}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:200]}
+
+
+def texto_recuperacion(pedido):
+    tel = (pedido.get('tel', '') or '').replace('+', '')
+    total = float(pedido.get('total', 0))
+    piezas = ', '.join(('%s x%s' % (it.get('desc', ''), it.get('cant', 1))) for it in pedido.get('items', []))
+    texto = ('Hola %s, vemos que dejaste tu pedido: %s (total $%.2f) pendiente. '
+             'Te apartamos las piezas por 24 h. Respondeme ENVIAR y te lo despacho hoy. '
+             'Refaccionaria La Galera, Puebla.' % (pedido.get('nombre', ''), piezas or 'refacciones', total))
+    return {'tel': tel, 'texto': texto, 'link': 'https://wa.me/%s?text=%s' % (tel, urllib.parse.quote(texto)) if tel else ''}
+
+
+def crear_cotizacion(payload):
+    with LOCK:
+        items_in = payload.get('items', [])
+        if not isinstance(items_in, list) or not items_in:
+            return {'ok': False, 'error': 'Cotizacion sin itens'}
+        inv_map = {int(p['id']): p for p in MEM_DB.get('inventario', [])}
+        items = []
+        for it in items_in:
+            try:
+                pid = int(it.get('id') or 0)
+            except (TypeError, ValueError):
+                pid = 0
+            cant = max(1, int(it.get('cant', it.get('qty', 1)) or 1))
+            p = inv_map.get(pid) if pid else None
+            precio = float(it.get('precio') or (p.get('precio', 0) if p else 0) or 0)
+            desc = (it.get('desc') or (p.get('desc', '') if p else 'item manual')).strip()[:120]
+            if precio <= 0:
+                return {'ok': False, 'error': 'Item sin precio: ' + desc}
+            items.append({'id': pid, 'desc': desc, 'precio': round(precio, 2), 'cant': cant})
+        try:
+            descuento_pct = min(50.0, max(0.0, float(payload.get('descuento_pct', 0) or 0)))
+        except (TypeError, ValueError):
+            descuento_pct = 0.0
+        try:
+            validez_dias = max(1, int(payload.get('validez_dias', 15) or 15))
+        except (TypeError, ValueError):
+            validez_dias = 15
+        tasa_iva = float(MEM_DB.get('config', {}).get('facturalo', {}).get('tasa_iva', 0.16) or 0.16)
+        subtotal = sum(i['precio'] * i['cant'] for i in items)
+        descuento_monto = round(subtotal * descuento_pct / 100.0, 2)
+        base = subtotal - descuento_monto
+        iva = round(base * tasa_iva, 2)
+        total = round(base + iva, 2)
+        hoy = datetime.datetime.now()
+        consec = int(MEM_DB.get('cotizacion_consec', 1) or 1)
+        MEM_DB['cotizacion_consec'] = consec + 1
+        cot = {
+            'folio': 'COT-%s-%04d' % (hoy.strftime('%Y%m%d'), consec),
+            'ts': hoy.strftime('%Y-%m-%d %H:%M'),
+            'fecha': hoy.strftime('%Y-%m-%d'),
+            'validez_hasta': (hoy + datetime.timedelta(days=validez_dias)).strftime('%Y-%m-%d'),
+            'cliente': (payload.get('cliente', '') or 'Cliente B2B').strip()[:80],
+            'empresa': (payload.get('empresa', '') or '').strip()[:80],
+            'tel': (payload.get('tel', '') or '').strip()[:15],
+            'items': items, 'descuento_pct': descuento_pct, 'descuento_monto': descuento_monto,
+            'tasa_iva': tasa_iva, 'subtotal': round(subtotal, 2), 'iva': iva, 'total': total,
+            'notas': (payload.get('notas', '') or '').strip()[:300],
+            'estado': 'vigente'
+        }
+        MEM_DB.setdefault('cotizaciones', []).insert(0, cot)
+        saved = commit_db(increment_version=True, backup_now=False)
+    return {'ok': True, 'cotizacion': cot, 'state': saved}
+
 def get_ia_cfg():
     with LOCK:
         c = MEM_DB.get('config', {}).get('ia', {}) or {}
@@ -959,6 +1198,42 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if path == '/api/feed.csv':
             self.handle_feed()
+            return
+        if path == '/api/envios':
+            with LOCK:
+                envios = json.loads(json.dumps(MEM_DB.get('envios', [])))
+            self.send_json(200, {"ok": True, "envios": envios,
+                                 "paqueterias": [{'clave': k, 'nombre': v['nombre'], 'dias': v['dias'], 'costo': v['costo_base'], 'max_kg': v['max_kg']} for k, v in PAQUETERIAS.items()]})
+            return
+        if path == '/api/envio/recomendar':
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            self.send_json(200, {"ok": True, **recomendar_paqueteria(qs.get('peso', ['1'])[0], qs.get('urgente', ['0'])[0] in ('1', 'true'))})
+            return
+        if path == '/api/contactos':
+            with LOCK:
+                lista = json.loads(json.dumps(MEM_DB.get('contactos', [])))
+            self.send_json(200, {"ok": True, "contactos": lista})
+            return
+        if path == '/api/resenas':
+            with LOCK:
+                lista = json.loads(json.dumps(MEM_DB.get('resenas', [])))
+            self.send_json(200, {"ok": True, "resenas": lista, "resumen": nps_resumen(lista)})
+            return
+        if path == '/api/campanas':
+            with LOCK:
+                lista = json.loads(json.dumps(MEM_DB.get('campanas', [])))
+            self.send_json(200, {"ok": True, "campanas": lista,
+                                 "email_configurado": bool(get_email_cfg().get('host') and get_email_cfg().get('user')),
+                                 "sms_configurado": bool(get_sms_cfg().get('webhook'))})
+            return
+        if path == '/api/cotizaciones':
+            with LOCK:
+                lista = json.loads(json.dumps(MEM_DB.get('cotizaciones', [])))
+            self.send_json(200, {"ok": True, "cotizaciones": lista})
+            return
+        if path == '/api/cotizacion.html':
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            self.handle_cotizacion_html(qs.get('folio', [''])[0])
             return
         if path == '/api/respaldo':
             try:
@@ -1376,6 +1651,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return
             self.send_json(400, {"ok": False, "error": "Operaci\u00f3n inv\u00e1lida"})
             return
+        if path == '/api/envio':
+            self.handle_envio(payload)
+            return
+        if path == '/api/resena':
+            self.handle_resena(payload)
+            return
+        if path == '/api/contacto':
+            self.handle_contacto(payload)
+            return
+        if path == '/api/campana':
+            self.handle_campana(payload)
+            return
+        if path == '/api/cotizacion':
+            self.handle_cotizacion(payload)
+            return
+        if path == '/api/config-email':
+            with LOCK:
+                cfg = MEM_DB.setdefault('config', {}).setdefault('email', {})
+                for k in ('host', 'port', 'user', 'pass', 'remitente', 'ssl'):
+                    if k in payload: cfg[k] = str(payload[k]).strip()
+                cfg2 = MEM_DB.setdefault('config', {}).setdefault('sms', {})
+                if 'sms_webhook' in payload: cfg2['webhook'] = str(payload['sms_webhook']).strip()
+                saved = commit_db(increment_version=True, backup_now=False)
+            self.send_json(200, {"ok": True, "state": saved})
+            return
         if path == '/api/pedido':
             self.handle_pedido(payload)
             return
@@ -1389,6 +1689,256 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.handle_caja_corte(payload)
             return
         self.send_json(404, {"error": "Ruta no encontrada"})
+
+    def handle_envio(self, payload):
+        op = payload.get('op', 'crear')
+        with LOCK:
+            if op == 'crear':
+                try:
+                    pedido_id = int(payload.get('pedido_id') or 0)
+                except (TypeError, ValueError):
+                    self.send_json(400, {"ok": False, "error": "pedido_id invalido"})
+                    return
+                ped = next((p for p in MEM_DB.get('pedidos', []) if p.get('id') == pedido_id), None)
+                if not ped:
+                    self.send_json(404, {"ok": False, "error": "Pedido no encontrado"})
+                    return
+                paqueteria = payload.get('paqueteria', 'Estandar')
+                if paqueteria not in PAQUETERIAS:
+                    self.send_json(400, {"ok": False, "error": "Paqueteria invalida: use " + ', '.join(PAQUETERIAS)})
+                    return
+                guia = (payload.get('guia', '') or ('PEND-' + str(int(datetime.datetime.now().timestamp()) % 100000))).strip()[:40]
+                try:
+                    costo = round(float(payload.get('costo') or PAQUETERIAS[paqueteria]['costo_base']), 2)
+                except (TypeError, ValueError):
+                    costo = PAQUETERIAS[paqueteria]['costo_base']
+                envio = {
+                    'id': int(datetime.datetime.now().timestamp() * 1000),
+                    'pedido_id': pedido_id, 'cliente': ped.get('nombre', ''), 'tel': ped.get('tel', ''),
+                    'folio_venta': ped.get('folio', ''), 'paqueteria': paqueteria, 'guia': guia,
+                    'costo': costo, 'estado': 'preparado',
+                    'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+                }
+                MEM_DB.setdefault('envios', []).insert(0, envio)
+                saved = commit_db(increment_version=True, backup_now=False)
+                self.send_json(200, {"ok": True, "envio": envio, "state": saved})
+                return
+            envio = next((e for e in MEM_DB.get('envios', []) if e.get('id') == payload.get('id') or e.get('guia') == payload.get('guia')), None)
+            if not envio:
+                self.send_json(404, {"ok": False, "error": "Envio no encontrado"})
+                return
+            if op == 'estado':
+                estado = payload.get('estado', '')
+                if estado not in ESTADOS_ENVIO:
+                    self.send_json(400, {"ok": False, "error": "Estado invalido: " + '/'.join(ESTADOS_ENVIO)})
+                    return
+                envio['estado'] = estado
+                if estado == 'entregado':
+                    res = {
+                        'id': int(datetime.datetime.now().timestamp() * 1000),
+                        'envio_id': envio.get('id'), 'cliente': envio.get('cliente', ''),
+                        'tel': envio.get('tel', ''),
+                        'texto': 'Hola %s, tu pedido llego. De 1 a 10, que tan contento estas con tu compra en Refaccionaria La Galera? Tu opinion nos ayuda mucho.' % envio.get('cliente', ''),
+                        'estado': 'pendiente',
+                        'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+                    }
+                    MEM_DB.setdefault('resenas', []).insert(0, res)
+                    envio['encuesta_enviada'] = True
+                saved = commit_db(increment_version=True, backup_now=False)
+                self.send_json(200, {"ok": True, "envio": envio, "state": saved})
+                return
+            if op == 'rastrear':
+                res = rastrear_guia(envio.get('paqueteria', ''), envio.get('guia', ''))
+                if res.get('ok'):
+                    envio['ultimo_rastreo'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+                    envio['http_rastreo'] = res.get('http')
+                    commit_db(increment_version=False, backup_now=False)
+                self.send_json(200 if res.get('ok') else 400, res)
+                return
+            self.send_json(400, {"ok": False, "error": "Op invalida: crear/estado/rastrear"})
+
+    def handle_resena(self, payload):
+        op = payload.get('op', 'responder')
+        with LOCK:
+            if op == 'crear':
+                res = {
+                    'id': int(datetime.datetime.now().timestamp() * 1000),
+                    'cliente': (payload.get('cliente', '') or 'Cliente').strip()[:60],
+                    'tel': (payload.get('tel', '') or '').strip()[:15],
+                    'texto': 'Hola %s, como calificas tu compra en Refaccionaria La Galera? De 1 a 10.' % (payload.get('cliente', '') or ''),
+                    'estado': 'pendiente', 'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+                }
+                MEM_DB.setdefault('resenas', []).insert(0, res)
+                saved = commit_db(increment_version=True, backup_now=False)
+                self.send_json(200, {"ok": True, "resena": res, "state": saved})
+                return
+            res = next((r for r in MEM_DB.get('resenas', []) if r.get('id') == payload.get('id')), None)
+            if not res:
+                self.send_json(404, {"ok": False, "error": "Resena no encontrada"})
+                return
+            if op != 'responder':
+                self.send_json(400, {"ok": False, "error": "Op invalida: crear/responder"})
+                return
+            try:
+                score = int(payload.get('score'))
+                assert 1 <= score <= 10
+            except (TypeError, ValueError, AssertionError):
+                self.send_json(400, {"ok": False, "error": "score debe ser 1..10"})
+                return
+            res['score'] = score
+            res['comentario'] = (payload.get('comentario', '') or '').strip()[:300]
+            res['estado'] = 'respondida'
+            res['respondida_ts'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+            saved = commit_db(increment_version=True, backup_now=False)
+        self.send_json(200, {"ok": True, "resena": res, "resumen": nps_resumen(MEM_DB.get('resenas', [])), "state": saved})
+
+    def handle_contacto(self, payload):
+        op = payload.get('op', 'add')
+        with LOCK:
+            if op == 'del':
+                antes = len(MEM_DB.get('contactos', []))
+                MEM_DB['contactos'] = [c for c in MEM_DB.get('contactos', []) if c.get('tel') != payload.get('tel')]
+                saved = commit_db(increment_version=True, backup_now=False)
+                self.send_json(200, {"ok": True, "eliminados": antes - len(MEM_DB['contactos']), "state": saved})
+                return
+            tel = (payload.get('tel', '') or '').strip()[:15]
+            if not tel:
+                self.send_json(400, {"ok": False, "error": "Telefono requerido"})
+                return
+            contactos = MEM_DB.setdefault('contactos', [])
+            existente = next((c for c in contactos if c.get('tel') == tel), None)
+            data = {
+                'tel': tel,
+                'nombre': (payload.get('nombre', '') or '').strip()[:60],
+                'email': (payload.get('email', '') or '').strip()[:80],
+                'tags': (payload.get('tags', '') or '').strip()[:60]
+            }
+            if existente: existente.update(data)
+            else: contactos.insert(0, dict(data, **{'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}))
+            saved = commit_db(increment_version=True, backup_now=False)
+        self.send_json(200, {"ok": True, "contacto": existente or data, "state": saved})
+
+    def handle_campana(self, payload):
+        op = payload.get('op', 'crear')
+        with LOCK:
+            if op == 'abandonados':
+                hora = payload.get('horas', 24)
+                lista = [texto_recuperacion(p) for p in carritos_abandonados(hora)]
+                self.send_json(200, {"ok": True, "hay": len(lista), "recuperaciones": lista})
+                return
+            if op == 'crear':
+                seg = payload.get('segmento', 'todos')
+                canal = payload.get('canal', 'email')
+                if seg not in ('todos', 'abandonados', 'compradores') or canal not in ('email', 'sms', 'ambos'):
+                    self.send_json(400, {"ok": False, "error": "segmento: todos/abandonados/compradores · canal: email/sms/ambos"})
+                    return
+                camp = {
+                    'id': int(datetime.datetime.now().timestamp() * 1000),
+                    'nombre': (payload.get('nombre', '') or 'Campana').strip()[:60],
+                    'canal': canal, 'segmento': seg,
+                    'asunto': (payload.get('asunto', '') or 'Refaccionaria La Galera').strip()[:80],
+                    'texto': (payload.get('texto', '') or '').strip()[:1000],
+                    'estado': 'creada',
+                    'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+                }
+                MEM_DB.setdefault('campanas', []).insert(0, camp)
+                saved = commit_db(increment_version=True, backup_now=False)
+                self.send_json(200, {"ok": True, "campana": camp, "state": saved})
+                return
+            camp = next((c for c in MEM_DB.get('campanas', []) if c.get('id') == payload.get('id')), None)
+            if not camp:
+                self.send_json(404, {"ok": False, "error": "Campana no encontrada"})
+                return
+            if op != 'enviar':
+                self.send_json(400, {"ok": False, "error": "Op invalida: crear/enviar/abandonados"})
+                return
+            destinatarios = contactos_segmento(camp.get('segmento', 'todos'))
+            resultados = []
+            for c in destinatarios:
+                reg = {'tel': c.get('tel', ''), 'email': c.get('email', ''), 'estado': 'sin_destino'}
+                canal = camp.get('canal', 'email')
+                if canal in ('email', 'ambos') and c.get('email'):
+                    rr = enviar_email_smtp(c['email'], camp.get('asunto', ''), camp.get('texto', ''))
+                    reg['email_estado'] = 'enviado' if rr.get('ok') else 'error: ' + rr.get('error', '')
+                if canal in ('sms', 'ambos') and c.get('tel'):
+                    rr = enviar_sms_gateway(c['tel'], camp.get('texto', ''))
+                    reg['sms_estado'] = 'enviado' if rr.get('ok') else 'error: ' + rr.get('error', '')
+                if reg.get('email_estado') == 'enviado' or reg.get('sms_estado') == 'enviado':
+                    reg['estado'] = 'enviado'
+                resultados.append(reg)
+            camp['estado'] = 'enviada'
+            camp['enviada_ts'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+            camp['resultados'] = resultados
+            camp['enviados'] = sum(1 for r in resultados if r['estado'] == 'enviado')
+            saved = commit_db(increment_version=True, backup_now=False)
+        self.send_json(200, {"ok": True, "campana": camp, "enviados": camp.get('enviados', 0), "destinatarios": len(resultados), "state": saved})
+
+    def handle_cotizacion(self, payload):
+        op = payload.get('op', 'crear')
+        if op == 'anular':
+            with LOCK:
+                cot = next((c for c in MEM_DB.get('cotizaciones', []) if c.get('folio') == payload.get('folio')), None)
+                if not cot:
+                    self.send_json(404, {"ok": False, "error": "Cotizacion no encontrada"})
+                    return
+                cot['estado'] = 'anulada'
+                saved = commit_db(increment_version=True, backup_now=False)
+            self.send_json(200, {"ok": True, "cotizacion": cot, "state": saved})
+            return
+        if op != 'crear':
+            self.send_json(400, {"ok": False, "error": "Op invalida: crear/anular"})
+            return
+        res = crear_cotizacion(payload)
+        self.send_json(200 if res.get('ok') else 400, res)
+
+    def handle_cotizacion_html(self, folio):
+        with LOCK:
+            cot = next((c for c in MEM_DB.get('cotizaciones', []) if c.get('folio') == folio), None)
+        if not cot:
+            self.send_json(404, {"ok": False, "error": "Cotizacion no encontrada"})
+            return
+        filas = ''
+        for i in cot.get('items', []):
+            imp = float(i['precio']) * int(i['cant'])
+            filas += '<tr><td>%s</td><td style="text-align:center">%s</td><td style="text-align:right">$%.2f</td><td style="text-align:right">$%.2f</td></tr>' % (i['desc'], i['cant'], float(i['precio']), imp)
+        html = """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>Cotizacion %s · Refaccionaria La Galera</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#1e293b}
+h1{font-size:1.3rem;margin:0;color:#b91c1c}h2{font-size:1rem;font-weight:400;margin:4px 0 18px;color:#475569}
+table{width:100%%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #cbd5e1;padding:6px 8px;font-size:.9rem}
+th{background:#f1f5f9;text-align:left}.tot td{font-weight:bold;border:none;padding-top:8px}
+@media print{.no-print{display:none}}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start">
+<div><h1>REFACCIONARIA LA GALERA</h1><h2>Cotizacion %s · Vigencia hasta %s</h2></div>
+<div style="text-align:right;font-size:.85rem;color:#475569">Puebla, Puebla, MX<br>WhatsApp 222 573 8872</div></div>
+<p style="font-size:.9rem"><b>Cliente:</b> %s %s<br><b>Fecha:</b> %s</p>
+<table><tr><th>Descripcion</th><th style="text-align:center">Cant.</th><th style="text-align:right">P. unitario</th><th style="text-align:right">Importe</th></tr>
+%s
+<tr class="tot"><td colspan="3" style="text-align:right">Subtotal</td><td style="text-align:right">$%.2f</td></tr>
+<tr class="tot"><td colspan="3" style="text-align:right">Descuento (%.0f%%)</td><td style="text-align:right">-$%.2f</td></tr>
+<tr class="tot"><td colspan="3" style="text-align:right">IVA (%.2f%%)</td><td style="text-align:right">$%.2f</td></tr>
+<tr class="tot" style="font-size:1.1rem"><td colspan="3" style="text-align:right">TOTAL</td><td style="text-align:right">$%.2f</td></tr>
+</table>
+<p style="font-size:.85rem;color:#475569;margin-top:14px">%s</p>
+<p style="font-size:.8rem;color:#64748b">Precios en MXN, pueden cambiar sin previo aviso una vez vencida la cotizacion. Gracias por su preferencia.</p>
+<button class="no-print" onclick="window.print()" style="padding:10px 18px;background:#b91c1c;color:#fff;border:none;border-radius:8px;font-size:1rem;cursor:pointer">🖨️ Guardar PDF / Imprimir</button>
+</body></html>""" % (
+            cot['folio'], cot['folio'], cot.get('validez_hasta', ''),
+            cot.get('cliente', ''), ('· ' + cot['empresa']) if cot.get('empresa') else '',
+            cot.get('ts', ''), filas,
+            float(cot.get('subtotal', 0)) + float(cot.get('descuento_monto', 0)),
+            float(cot.get('descuento_pct', 0)), float(cot.get('descuento_monto', 0)),
+            float(cot.get('tasa_iva', 0.16)) * 100, float(cot.get('iva', 0)), float(cot.get('total', 0)),
+            ('Notas: ' + cot['notas']) if cot.get('notas') else '')
+        raw = html.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
 
     def handle_feed(self):
         host = self.headers.get('Host') or f'{get_local_ip()}:{PUERTO}'
@@ -1638,7 +2188,7 @@ def main():
     httpd = socketserver.ThreadingTCPServer(('0.0.0.0', PUERTO), Handler)
     ip = get_local_ip()
     print('=' * 58)
-    print('  REFACCIONARIA LA GALERA v6.0 - E-commerce + ERP + SAT')
+    print('  REFACCIONARIA LA GALERA v6.2 - E-commerce + ERP + SAT + CRM')
     print('=' * 58)
     print(f'  Sitio Público    : http://localhost:{PUERTO}/index.html')
     print(f'  Panel ERP Táctil : http://localhost:{PUERTO}/app.html')

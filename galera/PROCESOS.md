@@ -2,7 +2,7 @@
 
 Sistema de procesos comerciales con IDs estables (itera sobre ellos sin renumerar).
 Cada proceso declara su **entrada** (proceso origen) y **salida** (proceso destino) formando una cadena trazable.
-Columna **Estado** = cobertura del software v6.1 (`galera/`): ✅ implementado · 🟡 parcial · ⬜ pendiente
+Columna **Estado** = cobertura del software v6.2 (`galera/`): ✅ implementado · 🟡 parcial · ⬜ pendiente
 
 ## Mapa conectado de extremo a extremo
 
@@ -141,10 +141,10 @@ flowchart TD
 - Herramientas: WhatsApp Cloud API (`/api/whatsapp/send`, `/api/whatsapp/notificar-venta` — sincroniza: confirmaciones de venta), webhook receptor con verificación (`/api/whatsapp/webhook`), click-to-chat con mensaje pre-armado del carrito en el sitio.
 - KPIs: tasa de respuesta, conversión, tiempo de respuesta.
 
-### MKT-05 Email y SMS ⬜
-- Objetivo: flujos de bienvenida, carrito abandonado, post-venta. Cumplir aviso de privacidad (doble opt-in).
+### MKT-05 Email y SMS ✅ campañas ERP
+- Implementado v6.2: campañas `/api/campana` (crear/enviar) con segmentos `todos`, `compradores` y **carritos abandonados (≥ 24 h)** con mensaje de recuperación y link `wa.me` pre-armado (`op:'abandonados'`). Email por SMTP propio (`/api/config-email`, Gmail con app-password) y SMS por webhook genérico POST `{to,text}`.
+- Pendiente: automatización programada (bienvenida/doble opt-in) y cumplimiento formal de aviso de privacidad.
 - KPIs: open rate, ingreso por correo, bajas.
-
 ### MKT-06 Sitio central y SEO ✅
 - Herramientas: sitio public (Pages + servidor local), datos estructurados, velocidad. Feed CSV también indexable.
 - KPIs: tráfico orgánico, conversión orgánica.
@@ -181,9 +181,10 @@ Regla: cada pieza/pantalla declara qué técnica usa y su sustento real.
 - Herramientas: Agente Precios IA + combos sugeridos.
 - KPIs: AOV, aceptación de recomendación.
 
-### VTA-04 Cotizaciones B2B 🬡 manual
+### VTA-04 Cotizaciones B2B ✅ en ERP
+- Implementado v6.2: `/api/cotizacion` con folio `COT-AAAAMMDD-NN`, piezas del inventario o conceptos manuales, descuento %, validez en días y desglose subtotal/IVA/total con la tasa de zona configurada. PDF/imprimible con marca en `/api/cotizacion.html?folio=...`; anulación con `op:'anular'`.
+- Pendiente: seguimiento del cierre y la conversión cotización→venta (hoy manual).
 - Objetivo: cotizar para refaccionarios/reparadores. KPIs: cierre, ciclo de venta.
-
 ---
 
 ## Fase FAC — Facturación CFDI 4.0 ✅
@@ -208,31 +209,27 @@ Regla: cada pieza/pantalla declara qué técnica usa y su sustento real.
 
 ## Fase ENT — Entrega directa
 
-### ENT-01 Preparación y envío ✅ pickup local ⬜ paquetería
-- Objetivo: preparar pedidos pagados; entrega en tienda o mesajería local. Generación de guía por API pendiente.
+### ENT-01 Preparación y envío ✅ ERP (guía por API directa parcial)
+- Implementado v6.2: `/api/envio` crea el envío ligado al pedido con paquetería de catálogo (Estafeta, DHL, 99minutos, FedEx), registro de guía, costo y estados `preparado → en_transito → entregado/rechazado`. Recomendador automático por peso en `/api/envio/recomendar`.
+- Pendiente: generar la guía directamente con la API de la paquetería (requiere contrato/cuenta del negocio).
 - KPIs: tiempo de preparación, costo de envío.
-
-### ENT-02 Rastreo y notificaciones 🬡 WhatsApp manual
+### ENT-02 Rastreo y notificaciones ✅ ERP
+- Implementado v6.2: `op:'rastrear'` abre el rastreo oficial de la paquetería con la guía (Estafeta/DHL/FedEx/99minutos) y guarda la última consulta; estados visibles en la pestaña CRM. Aviso al cliente WhatsApp pre-armado (Cloud API o wa.me).
 - KPIs: incidencias por envío.
-
-### ENT-03 Confirmación de entrega ⬜
+### ENT-03 Confirmación de entrega ✅ ERP
+- Implementado v6.2: marcar envío ENTREGADO en CRM → dispara **encuesta automática de satisfacción (CX-01)** y cierra el ciclo pedido→venta→entrega.
 - KPIs: entregas a tiempo, devoluciones.
-
----
-
-## Fase CX — Posventa y datos
-
-### CX-01 Posventa, reseñas y retención 🬡
-- Actividades: pedir reseña tras entrega (NEU-01), programa de recompra, garantía directa.
+### CX-01 Posventa, reseñas y retención ✅ ERP
+- Implementado v6.2: encuesta automática post-entrega (escala 1–10) con botón WhatsApp pre-armado; respuestas en `/api/resena` y **NPS automático** (promotores/pasivos/detractores + promedio) en la pestaña CRM.
+- Pendiente: programa formal de recompra y garantías.
 - KPIs: NPS, tasa de recompra.
-
 ### CX-02 Analítica y bucle de mejora ✅ parcial (dashboard ERP + IA)
 - Herramientas: ERP (Caja corte, Ventas, IA — 🤖 agentes), datos de pedidos/canal/abandono.
 - KPIs: ventas totales, canal, CAC vs LTV. Bucle → COM-02 (precios), PROD-02 (stock), MKT-01 (creativos).
 
 ---
 
-## Leyenda de cobertura v6.1
+## Leyenda de cobertura v6.2
 
 | Estado | Significado |
 |---|---|
