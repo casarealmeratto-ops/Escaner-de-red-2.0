@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f172a">
+<title>La Galera Autopartes | Puebla</title>
+<style>
+:root{
+  --bg:#f8fafc; --surface:#ffffff; --primary:#0f172a; --accent:#dc2626;
+  --wa:#16a34a; --txt:#0f172a; --muted:#475569; --border:#e2e8f0;
+  --shadow:0 4px 20px rgba(15,23,42,.08);
+}
+body.dark{
+  --bg:#090d16; --surface:#111827; --primary:#020617;
+  --txt:#f8fafc; --muted:#94a3b8; --border:#1e293b;
+  --shadow:0 4px 20px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{background:var(--bg);color:var(--txt);line-height:1.5;transition:background .2s,color .2s;padding-bottom:90px}
+header{background:var(--primary);color:#fff;position:sticky;top:0;z-index:50;border-bottom:3px solid var(--accent);box-shadow:0 2px 12px rgba(0,0,0,.3)}
+.nav{max-width:1060px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:42px;height:42px;border-radius:12px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.05rem}
+.brand h1{font-size:1.05rem;font-weight:900;letter-spacing:.5px}
+.brand small{color:#94a3b8;font-size:.68rem;font-weight:700;letter-spacing:1.5px}
+.nav-links{display:flex;gap:18px;font-size:.85rem;font-weight:600}
+.nav-links a{color:#cbd5e1;text-decoration:none}
+.btn-wa-top{background:var(--wa);color:#fff;text-decoration:none;font-weight:700;padding:9px 14px;border-radius:10px;font-size:.82rem;display:inline-flex;align-items:center;gap:6px}
+.btn-theme{background:transparent;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:9px 10px;cursor:pointer;font-size:.85rem}
+
+.hero{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#fff;padding:42px 16px;border-bottom:1px solid var(--border)}
+.hero-inner{max-width:1060px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:26px;align-items:center}
+.tag{display:inline-block;background:rgba(220,38,38,.2);border:1px solid #ef4444;color:#fca5a5;font-size:.72rem;font-weight:800;padding:4px 12px;border-radius:99px;text-transform:uppercase;margin-bottom:12px}
+.hero h2{font-size:1.9rem;line-height:1.18;font-weight:900;margin-bottom:12px}
+.hero h2 span{color:#f87171}
+.hero p{color:#cbd5e1;font-size:.95rem;margin-bottom:20px}
+.btn-main{background:var(--wa);color:#fff;text-decoration:none;font-weight:800;padding:13px 20px;border-radius:12px;font-size:.95rem;display:inline-flex;align-items:center;gap:8px}
+
+.container{max-width:1060px;margin:0 auto;padding:36px 16px}
+.search-bar{width:100%;padding:13px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--txt);font-size:.95rem;margin-bottom:20px;box-shadow:var(--shadow)}
+.grid-stock{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.item-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.item-img{width:100%;height:150px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:2.2rem;color:var(--muted);border-bottom:1px solid var(--border)}
+.item-img img{width:100%;height:100%;object-fit:cover}
+.item-body{padding:14px;display:flex;flex-direction:column;flex:1;gap:8px}
+.item-cat{font-size:.7rem;font-weight:800;color:var(--accent);text-transform:uppercase}
+.item-title{font-size:.98rem;font-weight:800;margin:0}
+.item-meta{font-size:.78rem;color:var(--muted)}
+.item-bottom{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:auto}
+.item-price{font-size:1.15rem;font-weight:900}
+.btn-add{background:var(--wa);color:#fff;border:none;text-decoration:none;font-size:.8rem;font-weight:800;padding:9px 14px;border-radius:9px;cursor:pointer}
+.btn-add:disabled{background:#94a3b8;cursor:not-allowed}
+
+.right-bar{position:fixed;right:16px;bottom:16px;z-index:80}
+.cart-fab{position:relative;background:var(--accent);color:#fff;border:none;border-radius:99px;padding:16px 22px;font-size:1rem;font-weight:900;cursor:pointer;box-shadow:0 8px 24px rgba(220,38,38,.4)}
+.cart-fab .badge{position:absolute;top:-6px;right:-6px;background:#0f172a;border:2px solid #fff;color:#fff;border-radius:99px;font-size:.7rem;font-weight:900;padding:2px 7px}
+
+.modal-bg{position:fixed;inset:0;background:rgba(2,6,23,.6);z-index:90;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--surface);color:var(--txt);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:18px;max-height:88vh;overflow-y:auto}
+.modal h3{margin-bottom:12px}
+.cart-item{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:8px 0;font-size:.9rem}
+.qty{display:flex;align-items:center;gap:6px}
+.qty button{width:26px;height:26px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--txt);font-weight:900;cursor:pointer}
+.cart-total{display:flex;justify-content:space-between;font-weight:900;font-size:1.1rem;padding:12px 0}
+.modal input,.modal textarea{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--txt);margin-bottom:10px;font-size:.9rem}
+.btn{width:100%;padding:13px;border:none;border-radius:12px;font-weight:900;font-size:.95rem;cursor:pointer;color:#fff}
+.btn-green{background:var(--wa)}
+.btn-blue{background:#1d4ed8}
+.btn-ghost{background:var(--bg);color:var(--txt);border:1px solid var(--border);margin-top:8px}
+
+.contact-card{background:var(--primary);color:#fff;border-radius:18px;padding:28px 20px;text-align:center;margin-top:20px}
+.contact-card h3{font-size:1.45rem;margin-bottom:12px}
+.contact-card p{color:#cbd5e1;margin:6px 0;font-size:.95rem}
+
+footer{text-align:center;padding:24px 16px;font-size:.78rem;color:var(--muted);border-top:1px solid var(--border)}
+footer a{color:var(--muted);text-decoration:none}
+@media(max-width:640px){.nav-links{display:none}}
+</style>
+</head>
+<body>
+<div style="background:#1e293b;color:#cbd5e1;font-size:.78rem;text-align:center;padding:8px 14px">🌎 Versión demo en línea del catálogo · El sistema completo (inventario vivo, pedidos, pagos y facturación) corre en la tienda · 📱 Consulta piezas por WhatsApp</div>
+
+<header>
+  <div class="nav">
+    <div class="brand">
+      <div class="logo">LG</div>
+      <div>
+        <h1>LA GALERA</h1>
+        <small>AUTOPARTES PUEBLA</small>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a href="#catalogo">Catálogo</a>
+      <a href="#ubicacion">Ubicación</a>
+      
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-theme" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
+      <a id="waTop" class="btn-wa-top" href="https://wa.me/522225738872" target="_blank">💬 Cotizar</a>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div>
+      <span class="tag">Especialistas en Colisión · Puebla</span>
+      <h2>¿Chocaste tu auto? <span>Encuentra tu pieza exacta sin dar vueltas.</span></h2>
+      <p>Faros, calaveras, espejos, cofres y defensas con ajuste exacto. Compra en línea y recoge en tienda o pide entrega.</p>
+      <a id="waHero" class="btn-main" href="https://wa.me/522225738872?text=Hola,%20quiero%20enviar%20foto%20de%20mi%20golpe%20para%20cotizar" target="_blank">📸 Envía foto de tu golpe</a>
+    </div>
+  </div>
+</section>
+
+<section id="catalogo" class="container">
+  <div style="margin-bottom:18px">
+    <h3 style="font-size:1.4rem;font-weight:900">📦 Disponibilidad en Tienda</h3>
+    <p style="color:var(--muted);font-size:.88rem">Inventario y precios actualizados en tiempo real desde mostrador. Agrega al carrito y finaliza por WhatsApp o pedido web.</p>
+  </div>
+  <input id="qPublic" class="search-bar" placeholder="🔍 Busca modelo o pieza (ej. Versa, Faro, Aveo, Defensa)..." oninput="renderPublic()">
+  <div class="grid-stock" id="gridStock"></div>
+</section>
+
+<section id="ubicacion" class="container" style="padding-top:0">
+  <div class="contact-card">
+    <h3>Visítanos en Puebla</h3>
+    <p id="lblDir">📍 Av. 44 Pte. 1703, Col. Cleotilde Torres, Puebla</p>
+    <p id="lblHor">🕐 Lun-Vie 9:00 - 18:00 · Sáb 9:00 - 14:00</p>
+    <p id="lblTel">📱 WhatsApp y Teléfono: 222 573 8872</p>
+    <div style="margin-top:16px">
+      <a id="waFoot" class="btn-main" href="https://wa.me/522225738872" target="_blank">💬 Abrir WhatsApp Directo</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  © La Galera Autopartes · Puebla, México · <a href="https://wa.me/522225738872">WhatsApp 222 573 8872</a>
+</footer>
+
+<div class="modal-bg" id="cartModal">
+  <div class="modal">
+    <h3>🛒 Tu Carrito <button onclick="closeCart()" style="float:right;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--txt)">✕</button></h3>
+    <div id="cartItems"></div>
+    <div class="cart-total"><span>Total (IVA incluido)</span><span id="cartTotal">$0.00</span></div>
+    <input id="clNombre" placeholder="Tu nombre">
+    <input id="clTel" type="tel" placeholder="WhatsApp de contacto (10 dígitos)">
+    <textarea id="clNotas" rows="2" placeholder="Datos de tu auto (modelo, año, lado de la pieza)"></textarea>
+    <button class="btn btn-green" onclick="enviarPedidoWA()">💬 Pedir por WhatsApp</button>
+    <button class="btn btn-blue" onclick="enviarPedidoWeb()">📥 Enviar pedido a la tienda</button>
+    <button class="btn btn-ghost" onclick="vaciarCarrito()">Vaciar carrito</button>
+    <div id="pedidoOK" style="display:none;margin-top:12px;padding:12px;background:#dcfce7;color:#14532d;border-radius:10px;font-size:.9rem"></div>
+  </div>
+</div>
+
+<div class="right-bar">
+  <button class="cart-fab" onclick="openCart()">
+    🛒 Carrito
+    <span class="badge" id="cartBadge" style="display:none">0</span>
+  </button>
+</div>
+
+<script>
+let pubInv=[],pubCfg={whats:'2225738872',dir:'Av. 44 Pte. 1703, Col. Cleotilde Torres, Puebla',horario:'Lun-Vie 9:00 - 18:00 · Sáb 9:00 - 14:00'};
+let cart=JSON.parse(localStorage.getItem('lg_cart')||'[]');
+
+function toggleTheme(){
+  document.body.classList.toggle('dark');
+  localStorage.setItem('lg_theme',document.body.classList.contains('dark')?'dark':'light');
+}
+if(localStorage.getItem('lg_theme')==='dark')document.body.classList.add('dark');
+
+function money(n){return '$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
+
+function renderPublic(){
+  const q=document.getElementById('qPublic').value.toLowerCase().trim();
+  const list=pubInv.filter(p=>!q||(p.desc+' '+p.cat+' '+(p.prov||'')).toLowerCase().includes(q));
+  const grid=document.getElementById('gridStock');
+  if(!list.length){
+    grid.innerHTML=`<div class="item-card" style="grid-column:1/-1;text-align:center;padding:26px">
+      <b>¿No encuentras tu modelo?</b>
+      <p class="item-meta" style="margin:6px 0 12px">Tenemos más piezas en bodega. Mándanos un mensaje con los datos de tu auto.</p>
+      <a class="btn-add" style="display:inline-block;padding:10px 16px" href="https://wa.me/52${pubCfg.whats}?text=${encodeURIComponent('Hola, busco esta pieza: '+(q||''))}" target="_blank">📱 Consultar por WhatsApp</a>
+    </div>`;
+    return;
+  }
+  grid.innerHTML=list.map(p=>{
+    const img=p.img?`<img src="${p.img}" loading="lazy" alt="${p.desc}" onerror="this.replaceWith(document.createTextNode('🔧'))">`:'🔧';
+    const out=Number(p.stock)<=0;
+    return `<div class="item-card" id="p${p.id}">
+      <div class="item-img">${img}</div>
+      <div class="item-body">
+        <span class="item-cat">${p.cat}</span>
+        <div class="item-title">${p.desc}</div>
+        <div class="item-meta">${p.prov?'Marca: '+p.prov+' · ':''}${out?'Agotado':'Stock: '+p.stock}</div>
+        <div class="item-bottom">
+          <div>
+            <div class="item-price">${money(p.precio)}</div>
+            <span style="font-size:.7rem;color:var(--muted);font-weight:700">IVA incluido</span>
+          </div>
+          <button class="btn-add" ${out?'disabled':''} onclick="addToCart(${p.id})">${out?'Sin stock':'+ Carrito'}</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function addToCart(id){
+  const p=pubInv.find(x=>x.id===id);
+  if(!p||p.stock<=0)return;
+  const line=cart.find(x=>x.id===id);
+  const enCarrito=line?line.cant:0;
+  if(enCarrito+1>p.stock){alert('Solo hay '+p.stock+' disponible(s)');return;}
+  if(line)line.cant++;else cart.push({id:p.id,cant:1});
+  saveCart();
+}
+function setQty(id,d){
+  const line=cart.find(x=>x.id===id);if(!line)return;
+  const p=pubInv.find(x=>x.id===id);
+  line.cant+=d;
+  const max=p?p.stock:99;
+  if(line.cant<=0)cart=cart.filter(x=>x.id!==id);
+  else line.cant=Math.min(line.cant,max);
+  saveCart();
+}
+function delItem(id){cart=cart.filter(x=>x.id!==id);saveCart();}
+function vaciarCarrito(){cart=[];saveCart();}
+function saveCart(){
+  localStorage.setItem('lg_cart',JSON.stringify(cart));
+  renderCart();
+}
+function carritoItems(){return cart.map(c=>({...c,p:pubInv.find(x=>x.id===c.id)})).filter(x=>x.p);}
+function cartTotal(){return carritoItems().reduce((t,x)=>t+x.p.precio*x.cant,0);}
+function renderCart(){
+  const n=cart.reduce((t,x)=>t+x.cant,0);
+  const badge=document.getElementById('cartBadge');
+  badge.textContent=n;badge.style.display=n?'block':'none';
+  document.getElementById('cartTotal').textContent=money(cartTotal());
+  const wrap=document.getElementById('cartItems');
+  const items=carritoItems();
+  wrap.innerHTML=items.length?items.map(x=>`
+    <div class="cart-item">
+      <div style="flex:1"><b>${x.p.desc}</b><br><small style="color:var(--muted)">${money(x.p.precio)} c/u</small></div>
+      <div class="qty">
+        <button onclick="setQty(${x.id},-1)">−</button><b>${x.cant}</b><button onclick="setQty(${x.id},1)">+</button>
+        <button onclick="delItem(${x.id})" title="Quitar" style="width:auto;border:none;background:none;color:#dc2626;font-weight:900;cursor:pointer">✕</button>
+      </div>
+    </div>`).join(''):'<p class="item-meta">Tu carrito está vacío.</p>';
+}
+function openCart(){document.getElementById('cartModal').classList.add('open');renderCart();}
+function closeCart(){document.getElementById('cartModal').classList.remove('open');document.getElementById('pedidoOK').style.display='none';}
+
+function enviarPedidoWA(){
+  const items=carritoItems();
+  if(!items.length){alert('Agrega piezas al carrito');return;}
+  const lineas=items.map(x=>`• ${x.cant} x ${x.p.desc} — ${money(x.p.precio*x.cant)}`);
+  const nombre=document.getElementById('clNombre').value.trim();
+  const tel=document.getElementById('clTel').value.trim();
+  const notas=document.getElementById('clNotas').value.trim();
+  let msg='Hola La Galera, quiero comprar:\n'+lineas.join('\n')+`\n\n*Total: ${money(cartTotal())}*`;
+  if(nombre)msg+='\nNombre: '+nombre;
+  if(notas)msg+='\nMi auto: '+notas;
+  if(tel)msg+='\nWhatsApp: '+tel;
+  window.open(`https://wa.me/52${pubCfg.whats}?text=${encodeURIComponent(msg)}`,'_blank');
+}
+async function enviarPedidoWeb(){
+  if(window.SIN_SERVIDOR){alert('En la versión demo la tienda no está conectada. Usa "Pedir por WhatsApp" para tu pedido.');return;}
+  const items=carritoItems();
+  if(!items.length){alert('Agrega piezas al carrito');return;}
+  const body={
+    nombre:document.getElementById('clNombre').value.trim(),
+    tel:document.getElementById('clTel').value.trim(),
+    notas:document.getElementById('clNotas').value.trim(),
+    items:items.map(x=>({id:x.id,cant:x.cant}))
+  };
+  const r=await fetch('/api/pedido',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const res=await r.json();
+  const okBox=document.getElementById('pedidoOK');
+  okBox.style.display='block';
+  if(res.ok){
+    okBox.style.background='#dcfce7';okBox.style.color='#14532d';
+    okBox.textContent='✅ Pedido recibido. Te contactaremos por WhatsApp para confirmar entrega.';
+    cart=[];saveCart();
+  }else{
+    okBox.style.background='#fee2e2';okBox.style.color='#7f1d1d';
+    okBox.textContent='⚠ '+res.error;
+  }
+}
+
+function aplicarCfg(){
+  document.getElementById('lblDir').textContent='📍 '+pubCfg.dir;
+  document.getElementById('lblHor').textContent='🕐 '+pubCfg.horario;
+  const wa='https://wa.me/52'+pubCfg.whats;
+  document.getElementById('waTop').href=wa;
+  document.getElementById('waHero').href=wa+'?text='+encodeURIComponent('Hola, quiero enviar foto de mi golpe para cotizar');
+  document.getElementById('waFoot').href=wa;
+  document.getElementById('lblTel').textContent='📱 WhatsApp y Teléfono: '+String(pubCfg.whats).replace(/(\d{3})(\d{3})(\d{4})/,'$1 $2 $3');
+}
+
+async function loadPublic(){
+  try{
+    const res=await fetch('/api/public');
+    if(res.ok){
+      const data=await res.json();
+      pubInv=data.inventario||[];
+      pubCfg={...pubCfg,...(data.config||{})};
+      aplicarCfg();
+      renderPublic();
+      if(cart.length)renderCart();
+    }
+  }catch(e){
+    pubInv=[
+      {id:901,cat:'FAROS',desc:'Faro Izq. Versa 2018-2022 (demo)',prov:'OEM',precio:1450,stock:3,img:'productos/placeholder.png'},
+      {id:902,cat:'FAROS',desc:'Faro Der. NP300 Frontier (demo)',prov:'OEM',precio:1680,stock:2,img:'productos/placeholder.png'},
+      {id:903,cat:'ESPEJOS',desc:'Espejo Izq. Sentra c/ cruces (demo)',prov:'GM',precio:890,stock:5,img:'productos/placeholder.png'},
+      {id:904,cat:'DEFENSAS',desc:'Parrilla Hilux 2021 cromada (demo)',prov:'Toyota',precio:2300,stock:1,img:'productos/placeholder.png'},
+      {id:905,cat:'COFRES',desc:'Cofre Aveo 2018 acero (demo)',prov:'GM',precio:3100,stock:1,img:'productos/placeholder.png'},
+      {id:906,cat:'DEFENSAS',desc:'Defensa Del. Polo 2020 (demo)',prov:'VW',precio:1950,stock:4,img:'productos/placeholder.png'}
+    ];
+    window.SIN_SERVIDOR=true;
+    aplicarCfg();renderPublic();
+  }
+}
+loadPublic();
+renderCart();
+setInterval(loadPublic,15000);
+</script>
+</body>
+</html>
