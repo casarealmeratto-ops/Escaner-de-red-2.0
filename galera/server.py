@@ -592,6 +592,86 @@ def get_logistica_cfg():
         return dict(MEM_DB.setdefault('config', {}).setdefault('logistica', {}) or {})
 
 
+# ==============================================================
+# v6.2 - Seguridad de acceso (PIN + sesiones con expiracion)
+# ==============================================================
+
+PIN_INICIAL = '8888'
+TTL_SESION = 12 * 3600
+SESIONES = {}
+INTENTOS_LOGIN = {'n': 0, 'bloqueo_hasta': 0}
+
+RUTAS_PUBLICAS_GET = {
+    '/api/health', '/api/public', '/api/feed.csv', '/api/seguridad',
+    '/api/whatsapp/webhook', '/api/partner/catalog'
+}
+RUTAS_PUBLICAS_POST = {
+    '/api/pedido', '/api/pagos/webhook', '/api/whatsapp/webhook',
+    '/api/partner/stock', '/api/login'
+}
+
+
+def ruta_publica(path, metodo):
+    return path in (RUTAS_PUBLICAS_GET if metodo == 'GET' else RUTAS_PUBLICAS_POST)
+
+
+def get_pin():
+    seg = MEM_DB.setdefault('config', {}).setdefault('seguridad', {})
+    return str(seg.setdefault('pin', PIN_INICIAL)), seg.get('pin', PIN_INICIAL) == PIN_INICIAL
+
+
+def iniciar_sesion(pin):
+    ahora = time.time()
+    if ahora < INTENTOS_LOGIN['bloqueo_hasta']:
+        return {'ok': False, 'error': 'Demasiados intentos fallidos; espera ' + str(int((INTENTOS_LOGIN['bloqueo_hasta'] - ahora) // 60) + 1) + ' minuto(s)', 'bloqueo': True}
+    pin_cfg, es_inicial = get_pin()
+    if str(pin or '').strip() != pin_cfg:
+        INTENTOS_LOGIN['n'] += 1
+        if INTENTOS_LOGIN['n'] >= 5:
+            INTENTOS_LOGIN['bloqueo_hasta'] = ahora + 300
+            INTENTOS_LOGIN['n'] = 0
+        return {'ok': False, 'error': 'PIN incorrecto' if not es_inicial else 'PIN incorrecto (el PIN inicial es ' + PIN_INICIAL + ')'}
+    INTENTOS_LOGIN['n'] = 0
+    token = base64.b64encode(os.urandom(18)).decode()
+    with LOCK:
+        SESIONES[token] = ahora
+        for t in list(SESIONES):
+            if ahora - SESIONES[t] > TTL_SESION:
+                del SESIONES[t]
+    return {'ok': True, 'token': token, 'expira_horas': TTL_SESION // 3600}
+
+
+def token_valido(self):
+    t = self.headers.get('X-Auth-Token', '') or ''
+    if not t:
+        return False
+    with LOCK:
+        ts = SESIONES.get(t)
+    try:
+        return bool(ts) and (time.time() - ts) < TTL_SESION
+    except (TypeError, ValueError):
+        return False
+
+
+def cerrar_sesion(self):
+    t = self.headers.get('X-Auth-Token', '') or ''
+    with LOCK:
+        SESIONES.pop(t, None)
+
+
+def pedir_pin(payload):
+    pin_actual, _ = get_pin()
+    if str(payload.get('pin_actual', '')) != pin_actual:
+        return {'ok': False, 'error': 'PIN actual incorrecto'}
+    nuevo = str(payload.get('pin_nuevo', '')).strip()
+    if not nuevo.isdigit() or len(nuevo) < 4 or len(nuevo) > 8:
+        return {'ok': False, 'error': 'El PIN nuevo debe ser de 4 a 8 digitos'}
+    with LOCK:
+        MEM_DB.setdefault('config', {}).setdefault('seguridad', {})['pin'] = nuevo
+        saved = commit_db(increment_version=True, backup_now=False)
+    return {'ok': True, 'state': saved}
+
+
 def recomendar_paqueteria(peso_kg=1.0, urgente=False):
     try:
         peso_kg = max(0.1, float(peso_kg))
@@ -1157,8 +1237,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split('?')[0]
+        if path.startswith('/api/') and not ruta_publica(path, self.command) and not token_valido(self):
+            self.send_json(401, {"error": "Sesion no iniciada o expirada", "login": True})
+            return
         if path == '/api/health':
             self.send_json(200, {"status": "alive", "version": MEM_DB.get("version", 1)})
+            return
+        if path == '/api/seguridad':
+            _, es_inicial = get_pin()
+            self.send_json(200, {"ok": True, "activa": True, "es_pin_inicial": es_inicial})
+            return
+        if path == '/api/cotizacion.html':
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            self.handle_cotizacion_html(qs.get('folio', [''])[0])
             return
         if path == '/api/state':
             with LOCK: snap = json.loads(json.dumps(MEM_DB))
@@ -1231,10 +1322,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 lista = json.loads(json.dumps(MEM_DB.get('cotizaciones', [])))
             self.send_json(200, {"ok": True, "cotizaciones": lista})
             return
-        if path == '/api/cotizacion.html':
-            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            self.handle_cotizacion_html(qs.get('folio', [''])[0])
-            return
         if path == '/api/respaldo':
             try:
                 data = crear_respaldo_zip()
@@ -1277,6 +1364,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split('?')[0]
+        if path.startswith('/api/') and not ruta_publica(path, self.command) and not token_valido(self):
+            self.send_json(401, {"error": "Sesion no iniciada o expirada", "login": True})
+            return
         length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(length).decode('utf-8') if length else '{}'
         try: payload = json.loads(body)
@@ -1284,6 +1374,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_json(400, {"error": "JSON inválido"})
             return
 
+        if path == '/api/login':
+            res = iniciar_sesion(str(payload.get('pin', '')))
+            self.send_json(200 if res.get('ok') else 401, res)
+            return
+        if path == '/api/logout':
+            cerrar_sesion(self)
+            self.send_json(200, {"ok": True})
+            return
+        if path == '/api/seguridad':
+            res = pedir_pin(payload)
+            self.send_json(200 if res.get('ok') else 400, res)
+            return
         if path == '/api/sync':
             with LOCK:
                 if 'inventario' in payload: MEM_DB['inventario'] = payload['inventario']
@@ -2188,7 +2290,7 @@ def main():
     httpd = socketserver.ThreadingTCPServer(('0.0.0.0', PUERTO), Handler)
     ip = get_local_ip()
     print('=' * 58)
-    print('  REFACCIONARIA LA GALERA v6.2 - E-commerce + ERP + SAT + CRM')
+    print('  REFACCIONARIA LA GALERA v6.2 - E-commerce + ERP + SAT + CRM (ERP con PIN)')
     print('=' * 58)
     print(f'  Sitio Público    : http://localhost:{PUERTO}/index.html')
     print(f'  Panel ERP Táctil : http://localhost:{PUERTO}/app.html')

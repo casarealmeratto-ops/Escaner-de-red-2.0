@@ -44,6 +44,7 @@ Servidor 24/7 que corre igual en **Android (Termux), Windows, Linux y macOS** �
 | 📣 **Campañas Email/SMS (MKT-05)** | Segmentos: todos, compradores y **carritos abandonados (&gt;24 h)** con mensaje de recuperación y link wa.me listo. Email por SMTP propio (Gmail con app-password) y SMS por webhook genérico `(POST {to,text})`. Configuración en ERP → Config → Email/SMS |
 | 🧾 **Cotizaciones B2B (VTA-04)** | Erre que erre con folio `COT-AAAAMMDD-NN`, piezas del inventario o conceptos manuales, descuento %, validez en días y desglose subtotal/IVA/total con la tasa de tu zona. Impresión/PDF profesional (`/api/cotizacion.html?folio=...`) con marca Refaccionaria La Galera |
 | 📑 **Contactos (CRM base)** | Agenda propia; se alimenta sola con pedidos web. Alimenta segmentos de campañas |
+| 🔒 **Protección del ERP con PIN** | Al abrir el panel pide PIN (inicial **8888**; sésiones de 12 h, bloqueo de 5 min tras 5 intentos fallidos). Cámbialo en Config → Seguridad. La tienda pública, pedidos web, webhooks de pago/WhatsApp y API Partner siguen abiertos; todo lo demás (inventario, ventas, caja, config, respaldo) exige sesión válida (`X-Auth-Token`) |
 | 💾 **Archivo histórico extendido** | cotizaciones, envíos, reseñas y campañas se archivan solos (500 calientes + archivo mensual) |
 
 ---
@@ -154,5 +155,7 @@ galera/
 - Reseñas/NPS: score 1–10 validado, NPS con promotores/pasivos/detractores ✅
 - Campañas: crear/enviar por email(SMTP)/SMS(webhook), segmentos y carritos abandonados ✅
 - Contactos: alta/actualización/borrado ✅
+- PIN ERP: rutas protegidas 401 sin sesión, login 8888, PIN incorrecto rechazado, bloqueo por intentos, cambio de PIN, logout invalida token ✅
+- Público intacto: tienda, feed, pedidos web, webhooks, partner ✅
 - Archivado con las nuevas colecciones (cotizaciones/envíos/resenas/campañas) ✅
 - Archivado automático: 600 registros → 500 calientes + archivo mensual ✅
