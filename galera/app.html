@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ERP La Galera v6 | IA · Caja · SAT</title>
+<style>
+:root{--bg:#f1f5f9;--surface:#fff;--primary:#0f172a;--blue:#1d4ed8;--red:#dc2626;--green:#16a34a;--amber:#d97706;--txt:#0f172a;--muted:#64748b;--border:#e2e8f0}
+body.dark{--bg:#090d16;--surface:#111827;--primary:#020617;--txt:#f8fafc;--muted:#94a3b8;--border:#1e293b}
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,sans-serif}
+body{background:var(--bg);color:var(--txt);padding-bottom:84px}
+header{background:var(--primary);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:30;display:flex;justify-content:space-between;align-items:center}
+header h2{font-size:1.05rem}
+header a{color:#93c5fd;font-size:.8rem;text-decoration:none}
+main{max-width:680px;margin:0 auto;padding:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h3{margin-bottom:10px;font-size:1rem}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--txt);margin-top:4px;margin-bottom:10px;font-size:.9rem}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-weight:800;cursor:pointer;color:#fff;font-size:.9rem}
+.btn-blue{background:var(--blue)}.btn-green{background:var(--green)}.btn-red{background:var(--red)}.btn-amber{background:var(--amber)}
+.btn-sm{width:auto;padding:6px 10px;font-size:.8rem}
+.item{border-bottom:1px solid var(--border);padding:10px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.88rem}
+.item small{color:var(--muted)}
+.pill{font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:99px;background:var(--bg);color:var(--muted)}
+.pill.nuevo{background:#fef3c7;color:#92400e}
+.pill.ok{background:#dcfce7;color:#14532d}
+.pill.bad{background:#fee2e2;color:#7f1d1d}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(6,1fr);z-index:40}
+nav button{background:none;border:none;padding:10px 2px;font-weight:700;color:var(--muted);cursor:pointer;font-size:.65rem}
+nav button.active{color:var(--red)}
+.stat{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;font-size:.85rem}
+.stat b{font-size:1rem}
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.kpi{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center}
+.kpi b{display:block;font-size:1.05rem}
+.kpi small{color:var(--muted);font-size:.65rem}
+.badge-ia{background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;border-radius:99px;padding:3px 10px;font-size:.65rem;font-weight:900}
+.th IMG{width:56px;height:56px;object-fit:cover;border-radius:8px;background:var(--bg)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h2>🔧 La Galera ERP v6 <span class="badge-ia">IA</span></h2>
+    <a href="/index.html">🌐 Ver Web</a>
+  </div>
+  <button onclick="toggleTheme()" style="background:none;border:none;font-size:1.1rem;cursor:pointer">🌓</button>
+</header>
+<main>
+
+<div id="tab-inv" class="card">
+  <h3>📦 Inventario · Nueva Pieza</h3>
+  <input id="fCat" placeholder="Categoría" value="Faros y Parrillas">
+  <input id="fDesc" placeholder="Descripción de autoparte">
+  <input id="fProv" placeholder="Marca / Proveedor">
+  <input id="fPrecio" type="number" placeholder="Precio IVA incluido">
+  <input id="fStock" type="number" placeholder="Stock inicial" value="3">
+  <button class="btn btn-blue" onclick="addPieza()">Guardar Pieza</button>
+  <div id="listaInv" style="margin-top:14px"></div>
+  <input type="file" id="fileImg" accept="image/*" style="display:none" onchange="subirFoto(this)">
+</div>
+
+<div id="tab-ped" class="card" style="display:none">
+  <h3>📥 Pedidos Web <span id="pedCount" class="pill nuevo">0</span></h3>
+  <div id="listaPedidos"></div>
+</div>
+
+<div id="tab-caja" class="card" style="display:none">
+  <h3>💰 Caja del Día</h3>
+  <div id="corteDia"></div>
+  <button class="btn btn-blue" onclick="cargarCorte()">🔄 Actualizar Corte</button>
+  <div style="margin-top:12px">
+    <input id="cgConcepto" placeholder="Concepto (ej. Compra de refacciones, gasto, etc.)">
+    <input id="cgMonto" type="number" placeholder="Monto">
+    <select id="cgTipo"><option value="ingreso">Ingreso de dinero</option><option value="egreso">Egreso de dinero</option></select>
+    <select id="cgMetodo"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select>
+    <button class="btn btn-amber" onclick="registrarMov()">Registrar Movimiento</button>
+  </div>
+</div>
+
+<div id="tab-ven" class="card" style="display:none">
+  <h3>🧾 Ventas y Facturación SAT</h3>
+  <div style="background:var(--bg);padding:12px;border-radius:10px;border:1px solid var(--border);margin-bottom:12px">
+    <b style="font-size:.9rem;color:var(--amber)">🧾 Factura Global del Día (Público General)</b>
+    <p style="font-size:.78rem;color:var(--muted);margin:4px 0 10px">Agrupa todas las ventas no facturadas de hoy bajo la clave global 01010101 con nodo InformacionGlobal.</p>
+    <button class="btn btn-amber" onclick="facturarGlobal()">⚡ Timbrar Factura Global de Hoy</button>
+  </div>
+  <div id="listaVentas"></div>
+</div>
+
+<div id="tab-ia" class="card" style="display:none">
+  <h3>🤖 IA · Agentes de Negocio</h3>
+  <div id="iaAgentes"></div>
+  <button class="btn btn-blue" onclick="cargarAgentes()">🧠 Analizar mi negocio</button>
+  <div style="margin-top:14px">
+    <textarea id="iaPregunta" rows="2" placeholder="Pregúntale a tu asesor: ¿cómo subo las ventas? ¿qué repongo?"></textarea>
+    <button class="btn btn-green" onclick="iaPreguntar()">💬 Consultar Asesor</button>
+    <div id="iaRespuesta" style="margin-top:10px;font-size:.88rem;white-space:pre-wrap"></div>
+  </div>
+</div>
+
+<div id="tab-cfg" class="card" style="display:none">
+  <h3>⚙️ Configuración</h3>
+
+  <b style="font-size:.85rem">FacturaLo SAT (CFDI 4.0)</b>
+  <input id="cfApiKey" type="password" placeholder="API Key FacturaLo Producción">
+  <button class="btn btn-blue" onclick="saveCfg()">Guardar FacturaLo</button>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">🤖 IA (opcional: connecta Mistral u otra API)</b>
+    <input id="iaUrl" placeholder="URL API (default Mistral)">
+    <input id="iaKey" type="password" placeholder="API Key IA (dejar vacío = agentes locales)">
+    <input id="iaModel" placeholder="Modelo (ej. mistral-small-latest)">
+    <button class="btn btn-blue" onclick="saveIA()">Guardar IA</button>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">💬 WhatsApp Business (Meta)</b>
+    <input id="waToken" type="password" placeholder="Token permanente WhatsApp Cloud API">
+    <input id="waPhone" placeholder="Phone Number ID">
+    <input id="waVerify" placeholder="Token de verificación del webhook">
+    <button class="btn btn-blue" onclick="saveIntWA()">Guardar WhatsApp</button>
+    <div style="font-size:.72rem;color:var(--muted);margin:6px 0">
+      Webhook receptor (requiere URL pública): <code>/api/whatsapp/webhook</code>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">🛒 Meta Commerce / Instagram / TikTok</b>
+    <input id="metaToken" type="password" placeholder="Token Meta Commerce Graph API">
+    <input id="metaCat" placeholder="Catalog ID (Meta)">
+    <button class="btn btn-blue" onclick="saveIntMeta()">Guardar Meta</button>
+    <button class="btn btn-green" onclick="pushMeta()">📤 Empujar catálogo a Meta</button>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:6px">Feed CSV (usable en Meta Commerce, TikTok y Google): <a href="/api/feed.csv" style="color:var(--blue)">/api/feed.csv</a></p>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">🛍️ Mercado Libre</b>
+    <input id="meliToken" type="password" placeholder="Token ML (developer.mercadolibre.com.mx)">
+    <input id="meliUser" placeholder="User ID ML">
+    <input id="meliCat" placeholder="Categoría ML default (ej. MLM1705)">
+    <button class="btn btn-blue" onclick="saveIntMeli()">Guardar Mercado Libre</button>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:6px">Publica piezas desde la lista de Inventario. La foto es obligatoria.</p>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">🔑 API Partner (enlaza sistemas externos)</b>
+    <input id="pKey" placeholder="API Key para partner (la inventas tú; para leer catálogo o actualizar precios/stock)"
+    value="">
+    <button class="btn btn-blue" onclick="savePartner()">Guardar API Partner</button>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:6px">
+      GET <code>/api/partner/catalog</code> (header X-API-Key)<br>
+      POST <code>/api/partner/stock</code> <code>{"id":1001,"precio":1450,"stock":4}</code>
+    </p>
+  </div>
+
+  <div style="margin-top:16px">
+    <b style="font-size:.85rem">💾 Memoria Local *</b>
+    <div id="memoriaEstado"></div>
+    <button class="btn btn-sc" onclick="verMemoria()" onmouseover="" style="background:#334155">Ver uso de memoria</button>
+  </div>
+</div>
+
+</main>
+<nav>
+  <button class="active" onclick="go('inv',this)">📦<br>Inventario</button>
+  <button onclick="go('ped',this)">📥<br>Pedidos</button>
+  <button onclick="go('caja',this)">💰<br>Caja</button>
+  <button onclick="go('ven',this)">🧾<br>Ventas</button>
+  <button onclick="go('ia',this)">🤖<br>IA</button>
+  <button onclick="go('cfg',this)">⚙️<br>Config</button>
+</nav>
+<script>
+let state={inventario:[],ventas:[],pedidos:[],caja:[],config:{facturalo:{apikey:''},ia:{},integraciones:{}}};
+function toggleTheme(){document.body.classList.toggle('dark');localStorage.setItem('lgd',document.body.classList.contains('dark')?'d':'l');}
+if(localStorage.getItem('lgd')==='d')document.body.classList.add('dark');
+function money(n){return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function go(t,b){
+  ['inv','ped','caja','ven','ia','cfg'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'block':'none');
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  if(t==='caja')cargarCorte();
+  if(t==='ia')cargarAgentes();
+  if(t==='ped'||t==='inv')render();
+}
+async function sync(){
+  try{
+    const r=await fetch('/api/state');
+    state=await r.json();
+    if(!state.config)state.config={facturalo:{},ia:{},integraciones:{}};
+    if(!state.config.ia)state.config.ia={};
+    if(!state.config.integraciones)state.config.integraciones={};
+    render();
+  }catch(e){}
+}
+async function push(){
+  await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+  sync();
+}
+async function addPieza(){
+  const desc=document.getElementById('fDesc').value.trim();
+  if(!desc){alert('Escribe la descripción de la pieza');return;}
+  state.inventario.unshift({
+    id:Date.now(),
+    cat:document.getElementById('fCat').value||'Colisión',
+    desc:desc,
+    prov:document.getElementById('fProv').value.trim(),
+    precio:parseFloat(document.getElementById('fPrecio').value)||0,
+    stock:parseInt(document.getElementById('fStock').value)||0,
+    img:''
+  });
+  await push();
+  document.getElementById('fDesc').value='';
+  document.getElementById('fPrecio').value='';
+  alert('Pieza guardada ✔ Ahora puedes subirle foto');
+}
+function pedirFoto(id){document.getElementById('fileImg').dataset.pid=id;document.getElementById('fileImg').click();}
+async function subirFoto(input){
+  const pid=parseInt(input.dataset.pid);
+  const file=input.files[0];if(!file)return;
+  const img=new Image();
+  img.src=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(file);});
+  await new Promise(r=>img.onload=r);
+  const scale=Math.min(1,900/Math.max(img.width,img.height));
+  const cv=document.createElement('canvas');
+  cv.width=img.width*scale;cv.height=img.height*scale;
+  cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+  const data=cv.toDataURL('image/jpeg',0.8);
+  const r=await fetch('/api/upload-img',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:pid,data})});
+  const res=await r.json();
+  alert(res.ok?'📸 Foto guardada ✔':'⚠ '+res.error);
+  input.value='';
+  sync();
+}
+async function borrarPieza(id){
+  if(!confirm('¿Eliminar esta pieza del inventario?'))return;
+  state.inventario=state.inventario.filter(p=>p.id!==id);
+  await push();
+}
+async function ajustarStock(id,d){
+  const p=state.inventario.find(x=>x.id===id);
+  if(!p)return;
+  p.stock=Math.max(0,(parseInt(p.stock)||0)+d);
+  await push();
+}
+async function iaDesc(id){
+  const r=await fetch('/api/ia/descripcion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const res=await r.json();
+  if(res.ok){prompt('Descripción generada por IA (copiar):',res.descripcion);}
+  else alert('⚠ '+res.error);
+}
+async function meliPub(id){
+  if(!confirm('¿Publicar esta pieza en Mercado Libre?'))return;
+  const r=await fetch('/api/meli/publicar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const res=await r.json();
+  alert(res.ok?'✅ Publicado en Mercado Libre:\n'+JSON.stringify(res.data?.id||''):'⚠ '+res.error);
+}
+async function confirmarPedido(id,metodo){
+  if(!confirm('¿Confirmar pedido y convertirlo en venta ('+metodo+')? Esto descuenta stock y registra en caja.'))return;
+  const r=await fetch('/api/pedido-accion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,accion:'confirmar',metodo})});
+  const res=await r.json();
+  if(res.ok){alert('✅ Venta '+res.venta.folio+' registrada. Puedes timbrarla en Ventas.');sync();}
+  else alert('⚠ '+res.error);
+}
+async function cancelarPedido(id){
+  if(!confirm('¿Cancelar este pedido web?'))return;
+  await fetch('/api/pedido-accion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,accion:'cancelar'})});
+  sync();
+}
+async function registrarMov(){
+  const monto=parseFloat(document.getElementById('cgMonto').value);
+  if(!monto||monto<=0){alert('Monto inválido');return;}
+  await fetch('/api/caja/mov',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    tipo:document.getElementById('cgTipo').value,
+    concepto:document.getElementById('cgConcepto').value,
+    monto:monto,
+    metodo:document.getElementById('cgMetodo').value
+  })});
+  document.getElementById('cgConcepto').value='';document.getElementById('cgMonto').value='';
+  cargarCorte();sync();
+}
+async function cargarCorte(){
+  const r=await fetch('/api/caja/corte',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const res=await r.json();
+  if(!res.ok)return;
+  const c=res.corte;
+  document.getElementById('corteDia').innerHTML=`
+    <div class="kpi-grid">
+      <div class="kpi"><b>${money(c.ventas_total)}</b><small>VENTAS (${c.num_ventas})</small></div>
+      <div class="kpi"><b>${money(c.efectivo_esperado)}</b><small>EFECTIVO EN CAJA</small></div>
+      <div class="kpi"><b>${money(c.por_metodo.Transferencia||0)}</b><small>TRANSFERENCIAS</small></div>
+      <div class="kpi"><b>${money(c.por_metodo.Tarjeta||0)}</b><small>TARJETA</small></div>
+    </div>
+    <div class="stat"><span>Ingresos manuales</span><b>${money(c.ingresos)}</b></div>
+    <div class="stat"><span>Egresos / gastos</span><b>${money(c.egresos)}</b></div>
+    <div class="stat"><span>Total esperado del día</span><b>${money(c.total_dia)}</b></div>`;
+}
+async function cargarAgentes(){
+  document.getElementById('iaAgentes').innerHTML='<p style="color:var(--muted);font-size:.85rem">Analizando…</p>';
+  const r=await fetch('/api/ia/agentes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const res=await r.json();
+  if(!res.ok){document.getElementById('iaAgentes').innerHTML='';return;}
+  const s=res.resumen;
+  document.getElementById('iaAgentes').innerHTML=`
+    <div class="kpi-grid">
+      <div class="kpi"><b>${money(s.total_hoy)}</b><small>HOY (${res.motor})</small></div>
+      <div class="kpi"><b>${money(s.valor_inventario)}</b><small>VALOR INVENTARIO</small></div>
+    </div>
+    ${res.ideas.map(i=>`<div class="stat"><span>${i}</span></div>`).join('')}`;
+}
+async function iaPreguntar(){
+  const q=document.getElementById('iaPregunta').value.trim();
+  if(!q)return;
+  document.getElementById('iaRespuesta').textContent='Pensando…';
+  const r=await fetch('/api/ia/asesor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pregunta:q})});
+  const res=await r.json();
+  document.getElementById('iaRespuesta').textContent=(res.respuesta||res.error||'Sin respuesta')+'\n\n— motor: '+(res.motor||'');
+}
+async function facturar(id){
+  const r=await fetch('/api/facturar',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({venta_id:id,receptor:{rfc:'XAXX010101000',nombre:'PUBLICO EN GENERAL',cp:'72050'}})
+  });
+  const res=await r.json();
+  if(res.ok){alert('Timbrado OK UUID: '+res.uuid);sync();}
+  else alert('Error: '+res.error);
+}
+async function facturarGlobal(){
+  const hoyStr=new Date().toLocaleDateString('en-CA');
+  if(!confirm(`¿Deseas generar y timbrar la Factura Global del día ${hoyStr} agrupando todas las ventas no facturadas?`))return;
+  const r=await fetch('/api/facturar-global',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({dia:hoyStr})
+  });
+  const res=await r.json();
+  if(res.ok){alert('✅ Factura Global timbrada. UUID: '+res.uuid);sync();}
+  else alert('❌ '+res.error);
+}
+async function saveCfg(){state.config.facturalo.apikey=document.getElementById('cfApiKey').value;await push();alert('FacturaLo guardado ✔');}
+async function saveIA(){
+  await fetch('/api/ia/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    url:document.getElementById('iaUrl').value,key:document.getElementById('iaKey').value,model:document.getElementById('iaModel').value})});
+  sync();alert('Configuración IA guardada ✔');
+}
+async function saveIntWA(){
+  await fetch('/api/integraciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    wa_token:document.getElementById('waToken').value,wa_phone_id:document.getElementById('waPhone').value,wa_verify:document.getElementById('waVerify').value})});
+  sync();alert('WhatsApp guardado ✔ Prueba enviando desde el detalle de una venta.');
+}
+async function saveIntMeta(){
+  await fetch('/api/integraciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    meta_token:document.getElementById('metaToken').value,meta_catalog_id:document.getElementById('metaCat').value})});
+  sync();alert('Meta Commerce guardado ✔');
+}
+async function pushMeta(){
+  if(!confirm('¿Empujar el catálogo completo a Meta Commerce?'))return;
+  const r=await fetch('/api/meta/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const res=await r.json();
+  alert(res.ok?'✅ Catálogo enviado a Meta. Revisa Commerce Manager.':'⚠ '+res.error);
+}
+async function saveIntMeli(){
+  await fetch('/api/integraciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    meli_token:document.getElementById('meliToken').value,meli_user_id:document.getElementById('meliUser').value,meli_categoria:document.getElementById('meliCat').value})});
+  sync();alert('Mercado Libre guardado ✔');
+}
+async function savePartner(){
+  await fetch('/api/integraciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:document.getElementById('pKey').value})});
+  sync();alert('API Partner guardada ✔');
+}
+async function verMemoria(){
+  const r=await fetch('/api/memoria',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const res=await r.json();
+  const frio=Object.entries(res.archivo_frio||{}).map(([f,s])=>`<div class="stat"><span>🗄 ${f}</span><b>${(s/1048576).toFixed(2)} MB</b></div>`).join('')||'<div class="stat"><span>Sin archivos de archivo aún (aparecen al pasar 500 registros)</span></div>';
+  document.getElementById('memoriaEstado').innerHTML=`
+    <div class="stat"><span>⚙️ Base caliente <small>(límite ${res.limite_caliente})</small></span><b>${res.total_mb} MB</b></div>
+    ${Object.entries(res.caliente).map(([c,n])=>`<div class="stat"><span>${c}</span><b>${n} registros</b></div>`).join('')}
+    ${frio}`;
+}
+async function notificarWA(ventaId){
+  const tel=prompt('WhatsApp de destino (10 dígitos, sin lada): ');
+  if(!tel)return;
+  const r=await fetch('/api/whatsapp/notificar-venta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({venta_id:ventaId,tel})});
+  const res=await r.json();
+  alert(res.ok?'✉ Enviado por WhatsApp ✔':'⚠ '+res.error);
+}
+function render(){
+  document.getElementById('listaInv').innerHTML=state.inventario.map(p=>`
+    <div class="item">
+      ${p.img?`<img src="${p.img}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;background:var(--bg)">`:''}
+      <div style="flex:1"><b>${p.desc}</b><small><br>${money(p.precio)} · <span style="color:${p.stock<=0?'#dc2626':'inherit'}">Stock: ${p.stock}</span>${p.prov?' · '+p.prov:''}</small></div>
+      <button class="btn btn-blue btn-sm" onclick="ajustarStock(${p.id},-1)">−</button>
+      <button class="btn btn-green btn-sm" onclick="ajustarStock(${p.id},1)">＋</button>
+      <button class="btn btn-sm" style="background:var(--muted)" onclick="pedirFoto(${p.id})">📷</button>
+      <button class="btn btn-sm" style="background:#7c3aed" onclick="iaDesc(${p.id})" title="Generar descripción con IA">🤖</button>
+      ${p.img?`<button class="btn btn-sm" style="background:#eab308" onclick="meliPub(${p.id})" title="Publicar en Mercado Libre">ML</button>`:''}
+      <button class="btn btn-red btn-sm" onclick="borrarPieza(${p.id})">✕</button>
+    </div>`).join('');
+  const nuevos=(state.pedidos||[]).filter(p=>p.estado==='nuevo');
+  document.getElementById('pedCount').textContent=nuevos.length;
+  document.getElementById('listaPedidos').innerHTML=(state.pedidos||[]).map(p=>`
+    <div class="item">
+      <div style="flex:1">
+        <b>${p.nombre||'Cliente web'}</b> <span class="pill ${p.estado==='nuevo'?'nuevo':(p.estado==='cancelado'?'bad':'ok')}">${p.estado}</span>
+        <small><br>${p.tel||''} · ${p.ts} · ${p.notas||''}</small>
+        <small style="display:block">${(p.items||[]).map(i=>i.cant+'x '+i.desc).join(' · ')}</small>
+      </div>
+      <div style="text-align:right">
+        <b>${money(p.total)}</b><br>
+        ${p.estado==='nuevo'?`
+          <button class="btn btn-green btn-sm" onclick="confirmarPedido(${p.id},'Efectivo')">✔ Efectivo</button>
+          <button class="btn btn-blue btn-sm" style="margin-top:4px" onclick="confirmarPedido(${p.id},'Transferencia')">✔ Transf.</button>
+          <button class="btn btn-red btn-sm" style="margin-top:4px" onclick="cancelarPedido(${p.id})">✕</button>`:''}
+      </div>
+    </div>`).join('')||'<p style="color:var(--muted);font-size:.85rem">Sin pedidos web todavía.</p>';
+  document.getElementById('listaVentas').innerHTML=(state.ventas||[]).map(v=>`
+    <div class="item">
+      <div>
+        <b>Venta #${v.folio}</b> (${v.dia}) ${v.origen==='web'?'<span class="pill ok">web</span>':''}<small><br>${money(v.total)} · ${v.metodo} · ${v.facturado?'✅ '+v.uuid:'Pendiente de timbrar'}</small>
+      </div>
+      ${v.facturado?'':`<button class="btn btn-green btn-sm" onclick="facturar(${v.id})">Timbrar</button>`}
+      <button class="btn btn-sm" style="background:var(--green)" onclick="notificarWA(${v.id})" title="Enviar confirmación por WhatsApp">💬</button>
+    </div>`).join('');
+  const cfg=state.config||{};
+  if(cfg.facturalo?.apikey)document.getElementById('cfApiKey').value=cfg.facturalo.apikey;
+  if(cfg.ia){if(cfg.ia.url)document.getElementById('iaUrl').value=cfg.ia.url;if(cfg.ia.key)document.getElementById('iaKey').value=cfg.ia.key;if(cfg.ia.model)document.getElementById('iaModel').value=cfg.ia.model;}
+  const ic=cfg.integraciones||{};
+  if(ic.wa_token)document.getElementById('waToken').value=ic.wa_token;
+  if(ic.wa_phone_id)document.getElementById('waPhone').value=ic.wa_phone_id;
+  if(ic.wa_verify)document.getElementById('waVerify').value=ic.wa_verify;
+  if(ic.meta_token)document.getElementById('metaToken').value=ic.meta_token;
+  if(ic.meta_catalog_id)document.getElementById('metaCat').value=ic.meta_catalog_id;
+  if(ic.meli_token)document.getElementById('meliToken').value=ic.meli_token;
+  if(ic.meli_user_id)document.getElementById('meliUser').value=ic.meli_user_id;
+  if(ic.meli_categoria)document.getElementById('meliCat').value=ic.meli_categoria;
+  if(ic.api_key)document.getElementById('pKey').value=ic.api_key;
+}
+sync();
+setInterval(sync,6000);
+</script>
+</body>
+</html>
