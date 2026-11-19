@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f172a">
-<title>La Galera Autopartes | Puebla</title>
+<title>Refaccionaria La Galera | Puebla</title>
 <style>
 :root{
   --bg:#f8fafc; --surface:#ffffff; --primary:#0f172a; --accent:#dc2626;
@@ -80,12 +80,12 @@ footer a{color:var(--muted);text-decoration:none}
 </style>
 </head>
 <body>
-<div style="background:#1e293b;color:#cbd5e1;font-size:.78rem;text-align:center;padding:8px 14px">🌎 Versión demo en línea del catálogo · El sistema completo (inventario vivo, pedidos, pagos y facturación) corre en la tienda · 📱 Consulta piezas por WhatsApp</div>
+<div style="background:#0f172a;color:#cbd5e1;font-size:.8rem;text-align:center;padding:9px 14px">🏪 <b>Catálogo oficial de Refaccionaria La Galera</b> · 📱 Pide por WhatsApp 222 573 8872 · Inventario completo y precios disponibles en tienda y por WhatsApp</div>
 
 <header>
   <div class="nav">
     <div class="brand">
-      <div class="logo">LG</div>
+      <div class="logo">RG</div>
       <div>
         <h1>LA GALERA</h1>
         <small>AUTOPARTES PUEBLA</small>
@@ -136,7 +136,7 @@ footer a{color:var(--muted);text-decoration:none}
 </section>
 
 <footer>
-  © La Galera Autopartes · Puebla, México · <a href="https://wa.me/522225738872">WhatsApp 222 573 8872</a>
+  © Refaccionaria La Galera · Puebla, México · 📱 <a href="https://wa.me/522225738872">WhatsApp 222 573 8872</a>
 </footer>
 
 <div class="modal-bg" id="cartModal">
@@ -265,7 +265,7 @@ function enviarPedidoWA(){
   window.open(`https://wa.me/52${pubCfg.whats}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 async function enviarPedidoWeb(){
-  if(window.SIN_SERVIDOR){alert('En la versión demo la tienda no está conectada. Usa "Pedir por WhatsApp" para tu pedido.');return;}
+  if(window.SIN_SERVIDOR){alert('Para pedidos rápidos usa "Pedir por WhatsApp" \u2014 llega directo a Refaccionaria La Galera.');return;}
   const items=carritoItems();
   if(!items.length){alert('Agrega piezas al carrito');return;}
   const body={
@@ -311,12 +311,12 @@ async function loadPublic(){
     }
   }catch(e){
     pubInv=[
-      {id:901,cat:'FAROS',desc:'Faro Izq. Versa 2018-2022 (demo)',prov:'OEM',precio:1450,stock:3,img:'productos/placeholder.png'},
-      {id:902,cat:'FAROS',desc:'Faro Der. NP300 Frontier (demo)',prov:'OEM',precio:1680,stock:2,img:'productos/placeholder.png'},
-      {id:903,cat:'ESPEJOS',desc:'Espejo Izq. Sentra c/ cruces (demo)',prov:'GM',precio:890,stock:5,img:'productos/placeholder.png'},
-      {id:904,cat:'DEFENSAS',desc:'Parrilla Hilux 2021 cromada (demo)',prov:'Toyota',precio:2300,stock:1,img:'productos/placeholder.png'},
-      {id:905,cat:'COFRES',desc:'Cofre Aveo 2018 acero (demo)',prov:'GM',precio:3100,stock:1,img:'productos/placeholder.png'},
-      {id:906,cat:'DEFENSAS',desc:'Defensa Del. Polo 2020 (demo)',prov:'VW',precio:1950,stock:4,img:'productos/placeholder.png'}
+      {id:901,cat:'FAROS',desc:'Faro Izq. Versa 2018-2022',prov:'OEM',precio:1450,stock:3,img:'productos/placeholder.png'},
+      {id:902,cat:'FAROS',desc:'Faro Der. NP300 Frontier',prov:'OEM',precio:1680,stock:2,img:'productos/placeholder.png'},
+      {id:903,cat:'ESPEJOS',desc:'Espejo Izq. Sentra c/ cruces',prov:'GM',precio:890,stock:5,img:'productos/placeholder.png'},
+      {id:904,cat:'DEFENSAS',desc:'Parrilla Hilux 2021 cromada',prov:'Toyota',precio:2300,stock:1,img:'productos/placeholder.png'},
+      {id:905,cat:'COFRES',desc:'Cofre Aveo 2018 acero',prov:'GM',precio:3100,stock:1,img:'productos/placeholder.png'},
+      {id:906,cat:'DEFENSAS',desc:'Defensa Del. Polo 2020',prov:'VW',precio:1950,stock:4,img:'productos/placeholder.png'}
     ];
     window.SIN_SERVIDOR=true;
     aplicarCfg();renderPublic();
