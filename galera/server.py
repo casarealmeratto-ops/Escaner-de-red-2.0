@@ -32,6 +32,17 @@ FORMA_PAGO_MAP = {
 
 FEED_HEADER = ['id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link', 'brand']
 
+def esc_html(v):
+    return (str(v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;'))
+
+
+def ruta_estatica_peligrosa(path):
+    p = path.split('?')[0].lower()
+    nombre = p.rsplit('/', 1)[-1]
+    return (p.startswith(('/backups', '/archivo', '/datos', '/.git', '/db_')) or
+            nombre.startswith('.') or nombre == 'db_galera.json')
+
+
 def csv_escape(v):
     s = str(v if v is not None else '')
     if any(c in s for c in ',"\n'):
@@ -1216,6 +1227,12 @@ def fiscal_worker():
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, **MIME_EXTRA}
+
+    def send_head(self):
+        if ruta_estatica_peligrosa(self.path):
+            self.send_json(404, {"error": "No encontrado"})
+            return None
+        return http.server.SimpleHTTPRequestHandler.send_head(self)
     def __init__(self, *a, **k): super().__init__(*a, directory=CARPETA, **k)
 
     def send_json(self, code, payload):
@@ -1395,8 +1412,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
 
         if path == '/api/venta':
+            if not isinstance(payload.get('items'), list) or not payload.get('items'):
+                self.send_json(400, {"ok": False, "error": "Venta sin artículos"})
+                return
             with LOCK:
-                items = payload.get('items', [])
+                items = payload.get('items')
                 cliente = payload.get('cliente', 'Mostrador')
                 auto = payload.get('auto', '')
                 metodo = payload.get('metodo', 'Efectivo')
@@ -2002,8 +2022,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         filas = ''
         for i in cot.get('items', []):
             imp = float(i['precio']) * int(i['cant'])
-            filas += '<tr><td>%s</td><td style="text-align:center">%s</td><td style="text-align:right">$%.2f</td><td style="text-align:right">$%.2f</td></tr>' % (i['desc'], i['cant'], float(i['precio']), imp)
-        html = """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+            filas += '<tr><td>%s</td><td style="text-align:center">%s</td><td style="text-align:right">$%.2f</td><td style="text-align:right">$%.2f</td></tr>' % (esc_html(i['desc']), esc_html(i['cant']), float(i['precio']), imp)
+        html_doc = """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <title>Cotizacion %s · Refaccionaria La Galera</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -2028,14 +2048,14 @@ th{background:#f1f5f9;text-align:left}.tot td{font-weight:bold;border:none;paddi
 <p style="font-size:.8rem;color:#64748b">Precios en MXN, pueden cambiar sin previo aviso una vez vencida la cotizacion. Gracias por su preferencia.</p>
 <button class="no-print" onclick="window.print()" style="padding:10px 18px;background:#b91c1c;color:#fff;border:none;border-radius:8px;font-size:1rem;cursor:pointer">🖨️ Guardar PDF / Imprimir</button>
 </body></html>""" % (
-            cot['folio'], cot['folio'], cot.get('validez_hasta', ''),
-            cot.get('cliente', ''), ('· ' + cot['empresa']) if cot.get('empresa') else '',
-            cot.get('ts', ''), filas,
+            esc_html(cot['folio']), esc_html(cot['folio']), esc_html(cot.get('validez_hasta', '')),
+            esc_html(cot.get('cliente', '')), (('· ' + esc_html(cot['empresa'])) if cot.get('empresa') else ''),
+            esc_html(cot.get('ts', '')), filas,
             float(cot.get('subtotal', 0)) + float(cot.get('descuento_monto', 0)),
             float(cot.get('descuento_pct', 0)), float(cot.get('descuento_monto', 0)),
             float(cot.get('tasa_iva', 0.16)) * 100, float(cot.get('iva', 0)), float(cot.get('total', 0)),
-            ('Notas: ' + cot['notas']) if cot.get('notas') else '')
-        raw = html.encode('utf-8')
+            ('Notas: ' + esc_html(cot['notas'])) if cot.get('notas') else '')
+        raw = html_doc.encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(raw)))

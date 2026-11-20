@@ -159,3 +159,4 @@ galera/
 - Público intacto: tienda, feed, pedidos web, webhooks, partner ✅
 - Archivado con las nuevas colecciones (cotizaciones/envíos/resenas/campañas) ✅
 - Archivado automático: 600 registros → 500 calientes + archivo mensual ✅
+- **Auditoría de escenarios (43 pruebas):** archivos sensibles (`db_galera.json`, `backups/`, `archivo/`, `.git`, `.env`) → 404 sin sesión; cotización imprimible escapa HTML/inyección; venta sin artículos rechazada (400); clamps de descuento/peso/cantidad; entrada unicode/emoji; webhook MP sin token sin crash; checkout público → confirmación protegida; HEAD no filtra datos; persistencia verificada tras reinicio del servidor ✅
